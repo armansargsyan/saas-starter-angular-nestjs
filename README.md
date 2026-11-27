@@ -86,6 +86,35 @@ Plans are defined once, in `libs/shared` (`PLANS`):
 - **Usage for the UI:** `GET /api/usage?workspaceId=…` returns `{ plan, links: { used, limit }, members: { used, limit } }`, where `limit: null` means unlimited.
 - **Error codes:** machine-readable error codes are listed in `libs/shared` (`API_ERROR_CODES`).
 
+### Billing (Stripe, test mode only)
+
+| Endpoint                                                              | What it does                                                                                                                |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/billing/checkout` `{ workspaceId, plan: 'pro' \| 'team' }` | Returns `{ url }` for Stripe Checkout. Only the workspace owner can call it: Pro for a personal workspace, Team for a team. |
+| `POST /api/billing/portal` `{ workspaceId }`                          | Returns `{ url }` for the Stripe customer portal (change plan, cancel, payment method).                                     |
+| `GET /api/billing/invoices?workspaceId=…`                             | The customer's invoices, with links to Stripe's hosted invoice pages.                                                       |
+| `POST /api/billing/webhook`                                           | Public. Checks the `Stripe-Signature` header against the raw request body.                                                  |
+
+- **The plan comes only from webhooks.** For each event the api re-fetches the subscription from Stripe and writes `workspace.plan` and `subscriptions/{id}`.
+- **Duplicate events are skipped**, using the event id stored in `stripeEvents/{id}`.
+- **Handled events:** checkout completed, subscription created/updated/deleted, and invoice paid/failed. Other events are acknowledged and ignored.
+
+**Local setup.** You need a Stripe test-mode account and the [Stripe CLI](https://docs.stripe.com/stripe-cli).
+
+```sh
+stripe login
+# Create two monthly prices (Pro $9, Team $29) and put their ids in .env:
+stripe prices create --unit-amount 900  --currency usd --recurring.interval month --product-data.name "Pro"
+stripe prices create --unit-amount 2900 --currency usd --recurring.interval month --product-data.name "Team"
+# Forward webhooks to the local api; copy the printed whsec_… into STRIPE_WEBHOOK_SECRET:
+stripe listen --forward-to localhost:3000/api/billing/webhook
+```
+
+Pay with the test card `4242 4242 4242 4242`, using any future expiry date and any CVC. In the Stripe dashboard, enable the customer portal under Settings → Billing → Customer portal.
+
+- **Plan switching:** don't let the portal switch between the Pro and Team products. Pro belongs to personal workspaces and Team to teams, and the webhook ignores a plan that doesn't fit the workspace.
+- **Live mode:** live-mode events are ignored. The api only runs in test mode.
+
 ## License
 
 [MIT](LICENSE) © 2026 Arman Sargsyan
