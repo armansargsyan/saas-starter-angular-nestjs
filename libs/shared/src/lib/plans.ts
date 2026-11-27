@@ -1,4 +1,4 @@
-/** Plan ids. Limits and prices are added with plan enforcement (#5). */
+/** Plan ids. */
 export const PLAN_IDS = ['free', 'pro', 'team'] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 
@@ -36,4 +36,78 @@ export function effectivePlanId(
 ): PlanId {
   if (!plan || !PAID_STATUSES.has(plan.status)) return 'free';
   return plan.id;
+}
+
+/** Seats in a Team workspace (owner included). */
+export const TEAM_MAX_SEATS = 10;
+
+/** `null` means unlimited. */
+export interface PlanLimits {
+  links: number | null;
+  members: number | null;
+}
+
+export interface PlanDefinition {
+  id: PlanId;
+  name: string;
+  /** Display price in USD per month; Stripe price ids live in api config. */
+  priceMonthlyUsd: number;
+  limits: PlanLimits;
+  features: string[];
+}
+
+/**
+ * The single source of truth for plans: the api enforces these limits and
+ * the pricing table renders them. Billing maps Stripe prices onto the ids.
+ */
+export const PLANS: Readonly<Record<PlanId, PlanDefinition>> = {
+  free: {
+    id: 'free',
+    name: 'Free',
+    priceMonthlyUsd: 0,
+    limits: { links: 10, members: 1 },
+    features: ['10 short links', 'Click analytics (90 days)', 'Custom slugs'],
+  },
+  pro: {
+    id: 'pro',
+    name: 'Pro',
+    priceMonthlyUsd: 9,
+    limits: { links: null, members: 1 },
+    features: [
+      'Unlimited short links',
+      'Click analytics (90 days)',
+      'Custom slugs',
+    ],
+  },
+  team: {
+    id: 'team',
+    name: 'Team',
+    priceMonthlyUsd: 29,
+    limits: { links: null, members: TEAM_MAX_SEATS },
+    features: [
+      'Unlimited short links',
+      `Up to ${TEAM_MAX_SEATS} team members`,
+      'Shared links and analytics',
+      'Roles: owner, admin, member',
+    ],
+  },
+};
+
+/** Whether one more item fits under `limit` (null = unlimited). */
+export function hasRoomFor(used: number, limit: number | null): boolean {
+  return limit === null || used < limit;
+}
+
+export interface UsageMeter {
+  used: number;
+  /** null = unlimited */
+  limit: number | null;
+}
+
+/** Response of `GET /api/usage?workspaceId=…` (query: `usageQuerySchema`). The UI only displays it. */
+export interface UsageResponse {
+  workspaceId: string;
+  plan: PlanId;
+  links: UsageMeter;
+  members: UsageMeter;
 }

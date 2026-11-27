@@ -10,11 +10,14 @@ import {
   CodeTakenError,
   FirestoreLinksRepository,
   type NewLink,
+  PlanLimitError,
   WorkspaceNotFoundError,
 } from './links.repository';
 
 const host = process.env['FIRESTORE_EMULATOR_HOST'];
 const PROJECT = 'demo-links-test';
+// Contending transactions queue on the emulator's locks before retrying.
+const CONTENDED_TIMEOUT_MS = 60_000;
 
 const link = (code: string, workspaceId = 'alice'): NewLink => ({
   code,
@@ -76,31 +79,117 @@ describe.skipIf(!host)('FirestoreLinksRepository (emulator)', () => {
       expect((await db.doc('workspaces/bob').get()).exists).toBe(false);
     });
 
-    it('lets exactly one of several concurrent creates of a code win', async () => {
-      const results = await Promise.allSettled(
-        ['u1', 'u2', 'u3', 'u4', 'u5'].map((uid) =>
-          repo.create(link('race', uid), uid),
-        ),
-      );
-      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-      for (const r of results) {
-        if (r.status === 'rejected')
-          expect(r.reason).toBeInstanceOf(CodeTakenError);
-      }
-    });
+    it(
+      'lets exactly one of several concurrent creates of a code win',
+      async () => {
+        const results = await Promise.allSettled(
+          ['u1', 'u2', 'u3', 'u4', 'u5'].map((uid) =>
+            repo.create(link('race', uid), uid),
+          ),
+        );
+        expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+        for (const r of results) {
+          if (r.status === 'rejected')
+            expect(r.reason).toBeInstanceOf(CodeTakenError);
+        }
+      },
+      CONTENDED_TIMEOUT_MS,
+    );
 
-    it('survives concurrent first links that both create the personal workspace', async () => {
-      await Promise.all([
-        repo.create(link('one'), 'alice'),
-        repo.create(link('two'), 'alice'),
-      ]);
-      expect(await linkCount('alice')).toBe(2);
-    });
+    it(
+      'survives concurrent first links that both create the personal workspace',
+      async () => {
+        await Promise.all([
+          repo.create(link('one'), 'alice'),
+          repo.create(link('two'), 'alice'),
+        ]);
+        expect(await linkCount('alice')).toBe(2);
+      },
+      CONTENDED_TIMEOUT_MS,
+    );
 
     it('refuses a missing non-personal workspace', async () => {
       await expect(
         repo.create(link('x1', 'team-1'), null),
       ).rejects.toBeInstanceOf(WorkspaceNotFoundError);
+    });
+  });
+
+  describe('plan limits', () => {
+    const fill = async (n: number, workspaceId = 'alice') => {
+      for (let i = 0; i < n; i++) {
+        await repo.create(
+          link(`${workspaceId}-${i}`, workspaceId),
+          workspaceId,
+        );
+      }
+    };
+    const setPlan = (id: string, status: string, workspaceId = 'alice') =>
+      db.doc(`workspaces/${workspaceId}`).update({
+        plan: { id, status, currentPeriodEnd: null, cancelAtPeriodEnd: false },
+      });
+
+    it('allows exactly 10 links on Free (no plan)', async () => {
+      await fill(10);
+      await expect(repo.create(link('eleventh'), 'alice')).rejects.toEqual(
+        new PlanLimitError('free', 10),
+      );
+      expect(await linkCount('alice')).toBe(10);
+      expect(await repo.get('eleventh')).toBeNull();
+    });
+
+    it(
+      'cannot be overshot by concurrent creates at the boundary',
+      async () => {
+        await fill(8);
+        const results = await Promise.allSettled(
+          [0, 1, 2, 3, 4, 5].map((i) =>
+            repo.create(link(`burst-${i}`), 'alice'),
+          ),
+        );
+
+        const ok = results.filter((r) => r.status === 'fulfilled');
+        expect(ok).toHaveLength(2);
+        for (const r of results) {
+          if (r.status === 'rejected')
+            expect(r.reason).toBeInstanceOf(PlanLimitError);
+        }
+        expect(await linkCount('alice')).toBe(10);
+        const stored = await db
+          .collection('links')
+          .where('workspaceId', '==', 'alice')
+          .get();
+        expect(stored.size).toBe(10);
+      },
+      CONTENDED_TIMEOUT_MS,
+    );
+
+    it('has no link limit on an active (or past_due) Pro plan', async () => {
+      await fill(10);
+      await setPlan('pro', 'active');
+      await repo.create(link('pro-11'), 'alice');
+      await setPlan('pro', 'past_due');
+      await repo.create(link('pro-12'), 'alice');
+      expect(await linkCount('alice')).toBe(12);
+    });
+
+    it('after a downgrade keeps existing links but blocks new ones', async () => {
+      await fill(10);
+      await setPlan('pro', 'active');
+      await repo.create(link('extra-1'), 'alice');
+      await repo.create(link('extra-2'), 'alice');
+      await setPlan('pro', 'canceled');
+
+      await expect(
+        repo.create(link('extra-3'), 'alice'),
+      ).rejects.toBeInstanceOf(PlanLimitError);
+      expect(await repo.get('extra-1')).not.toBeNull();
+
+      // Back under the limit only after deleting enough.
+      for (const code of ['extra-1', 'extra-2', 'alice-0'])
+        await repo.delete(code);
+      await repo.create(link('fits-again'), 'alice');
+      expect(await linkCount('alice')).toBe(10);
     });
   });
 
@@ -212,6 +301,21 @@ describe.skipIf(!host)('FirestoreLinksRepository (emulator)', () => {
         title: 'New',
       });
       expect(await repo.update('nope', { title: 'x' })).toBeNull();
+    });
+  });
+
+  describe('workspace usage', () => {
+    it('reads counts and the stored plan; null before the workspace exists', async () => {
+      const workspaces = new FirestoreWorkspacesRepository(db);
+      expect(await workspaces.getUsage('alice')).toBeNull();
+
+      await repo.create(link('u-1'), 'alice');
+      await repo.create(link('u-2'), 'alice');
+      expect(await workspaces.getUsage('alice')).toEqual({
+        plan: null,
+        linkCount: 2,
+        memberCount: 1,
+      });
     });
   });
 

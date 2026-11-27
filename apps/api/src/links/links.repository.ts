@@ -1,5 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import type { DeviceType } from '@saas-starter/shared';
+import {
+  type DeviceType,
+  effectivePlanId,
+  hasRoomFor,
+  type PlanId,
+  PLANS,
+} from '@saas-starter/shared';
 import {
   FieldPath,
   FieldValue,
@@ -8,6 +14,7 @@ import {
   Timestamp,
 } from 'firebase-admin/firestore';
 import { FIRESTORE } from '../firebase/firebase.tokens';
+import { toWorkspacePlan } from '../workspaces/workspaces.repository';
 import { utcDay } from './click-info';
 
 /** `links/{code}`; the doc id is the short code. */
@@ -55,6 +62,16 @@ export class CodeTakenError extends Error {
   }
 }
 
+/** The workspace's effective plan allows no more links. */
+export class PlanLimitError extends Error {
+  constructor(
+    readonly plan: PlanId,
+    readonly limit: number,
+  ) {
+    super(`The ${plan} plan allows ${limit} links`);
+  }
+}
+
 export class WorkspaceNotFoundError extends Error {
   constructor(workspaceId: string) {
     super(`Workspace ${workspaceId} does not exist`);
@@ -66,6 +83,7 @@ export abstract class LinksRepository {
    * Creates the link and bumps the workspace's `linkCount` in one transaction.
    * Creates the personal workspace (id = owner uid) on first use.
    * @throws CodeTakenError also for retired (previously deleted) codes
+   * @throws PlanLimitError when the effective plan's link limit is reached
    * @throws WorkspaceNotFoundError
    */
   abstract create(
@@ -166,7 +184,18 @@ export class FirestoreLinksRepository extends LinksRepository {
         throw new CodeTakenError(link.code);
       }
 
-      // Plan limits (#5) are checked here, against `workspace`.
+      // The limit is checked against `linkCount` inside the transaction, so
+      // concurrent creates can't overshoot it. After a downgrade existing
+      // links stay; only new ones are blocked until under the limit.
+      const plan = effectivePlanId(
+        workspace.exists ? toWorkspacePlan(workspace.get('plan')) : null,
+      );
+      const limit = PLANS[plan].limits.links;
+      const used = workspace.exists ? num(workspace.get('linkCount')) : 0;
+      if (!hasRoomFor(used, limit)) {
+        throw new PlanLimitError(plan, limit ?? 0);
+      }
+
       if (workspace.exists) {
         tx.update(workspaceRef, { linkCount: FieldValue.increment(1) });
       } else if (personalOwnerUid) {

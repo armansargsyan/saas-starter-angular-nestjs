@@ -71,6 +71,21 @@ The web app loads its Firebase config at runtime from `/__/firebase/init.json`. 
 - **Inflation guard:** each IP counts at most 10 clicks per link per minute. Clicks over the limit still redirect, they just aren't counted.
 - **Raw clicks** expire after 90 days through a Firestore TTL policy.
 
+### Plans and limits
+
+Plans are defined once, in `libs/shared` (`PLANS`):
+
+| Plan | Links     | Members | Price  |
+| ---- | --------- | ------- | ------ |
+| Free | 10        | 1       | $0     |
+| Pro  | unlimited | 1       | $9/mo  |
+| Team | unlimited | 10      | $29/mo |
+
+- **Enforced by the api:** the link-create transaction checks the workspace's stored `linkCount` against its effective plan, so concurrent requests can't overshoot the limit. At the limit the api returns `403 { code: 'plan_limit_reached', resource, limit, plan }`.
+- **Downgrades:** existing links keep working, but new ones are blocked until the workspace is back under the limit.
+- **Usage for the UI:** `GET /api/usage?workspaceId=…` returns `{ plan, links: { used, limit }, members: { used, limit } }`, where `limit: null` means unlimited.
+- **Error codes:** machine-readable error codes are listed in `libs/shared` (`API_ERROR_CODES`).
+
 ## License
 
 [MIT](LICENSE) © 2026 Arman Sargsyan

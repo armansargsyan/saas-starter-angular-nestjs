@@ -144,6 +144,7 @@ describe('links api', () => {
     repo.daily.clear();
     repo.taken.clear();
     repo.retired.clear();
+    repo.plans.clear();
     throttles.onApplicationShutdown();
     throttles = new ThrottlerStorageService();
     repo.failClicks = false;
@@ -265,6 +266,63 @@ describe('links api', () => {
         body: { targetUrl: 'https://a.com' },
       });
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('plan limits', () => {
+    it('allows 10 links on Free, then 403 plan_limit_reached', async () => {
+      for (let i = 0; i < 10; i++) {
+        const { res } = await createLink('alice', {
+          targetUrl: 'https://a.com',
+        });
+        expect(res.status).toBe(201);
+      }
+
+      const { res, link } = await createLink('alice', {
+        targetUrl: 'https://a.com',
+      });
+
+      expect(res.status).toBe(403);
+      expect(link).toEqual({
+        statusCode: 403,
+        code: 'plan_limit_reached',
+        message: expect.stringContaining('Free plan allows 10 links'),
+        resource: 'links',
+        limit: 10,
+        plan: 'free',
+      });
+      expect(repo.links.size).toBe(10);
+    });
+
+    it('frees a slot when a link is deleted', async () => {
+      for (let i = 0; i < 10; i++) {
+        await createLink('alice', {
+          targetUrl: 'https://a.com',
+          slug: `link-${i}`,
+        });
+      }
+      await call('DELETE', '/api/links/link-0', { as: 'alice' });
+
+      const { res } = await createLink('alice', { targetUrl: 'https://a.com' });
+      expect(res.status).toBe(201);
+    });
+
+    it('has no link limit on Pro', async () => {
+      repo.plans.set('alice', 'pro');
+      for (let i = 0; i < 12; i++) {
+        const { res } = await createLink('alice', {
+          targetUrl: 'https://a.com',
+        });
+        expect(res.status).toBe(201);
+      }
+    });
+
+    it("counts per workspace: one user's limit doesn't affect another", async () => {
+      for (let i = 0; i < 10; i++) {
+        await createLink('alice', { targetUrl: 'https://a.com' });
+      }
+      const { res } = await createLink('bob', { targetUrl: 'https://a.com' });
+      expect(res.status).toBe(201);
     });
   });
 
@@ -528,6 +586,8 @@ describe('links api', () => {
 
   describe('rate limit on create', () => {
     it(`allows ${CREATE_LINK_LIMIT.limit} creates per minute per user, then 429`, async () => {
+      repo.plans.set('carol', 'pro'); // the plan limit isn't what's tested here
+      repo.plans.set('dave', 'pro');
       const statuses: number[] = [];
       for (let i = 0; i <= CREATE_LINK_LIMIT.limit; i++) {
         statuses.push(
