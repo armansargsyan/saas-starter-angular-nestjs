@@ -1,12 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
+import { AppConfigService } from './config/app-config.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
-  const port = Number(process.env.PORT ?? 3000);
+  const port = app.get(AppConfigService).port;
   await app.listen(port);
   // Set when Nx waits for this server to be ready
   if (process.env.NX_READY_SIGNAL_SOCKET) {
