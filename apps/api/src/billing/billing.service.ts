@@ -15,6 +15,7 @@ import {
   type InvoiceListResponse,
   type PaidPlanId,
   type RedirectUrlResponse,
+  type SubscriptionResponse,
 } from '@saas-starter/shared';
 import type { AuthUser } from '../auth/auth-user';
 import { AppConfigService } from '../config/app-config.service';
@@ -117,6 +118,20 @@ export class BillingService {
         returnUrl: `${this.config.appUrl}/billing`,
       }),
     }));
+  }
+
+  /** The plan as last synced from Stripe (never from the client). */
+  async getSubscription(
+    user: AuthUser,
+    workspaceId: string,
+  ): Promise<SubscriptionResponse> {
+    const billing = await this.assertOwner(user, workspaceId);
+    return {
+      workspaceId,
+      plan: effectivePlanId(billing.plan),
+      subscription: billing.plan,
+      canOpenPortal: billing.stripeCustomerId !== null,
+    };
   }
 
   async listInvoices(

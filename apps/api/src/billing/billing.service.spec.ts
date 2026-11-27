@@ -273,6 +273,61 @@ describe('BillingService', () => {
     });
   });
 
+  describe('getSubscription', () => {
+    it('reports Free with no subscription before a purchase', async () => {
+      expect(await service.getSubscription(alice, 'alice')).toEqual({
+        workspaceId: 'alice',
+        plan: 'free',
+        subscription: null,
+        canOpenPortal: false,
+      });
+    });
+
+    it('reports the synced plan, renewal and cancellation', async () => {
+      const plan = {
+        id: 'pro' as const,
+        status: 'active' as const,
+        currentPeriodEnd: '2026-12-27T00:00:00.000Z',
+        cancelAtPeriodEnd: true,
+      };
+      repo.getWorkspaceBilling.mockResolvedValue({
+        ...noBilling,
+        stripeCustomerId: 'cus_1',
+        plan,
+      });
+      expect(await service.getSubscription(alice, 'alice')).toEqual({
+        workspaceId: 'alice',
+        plan: 'pro',
+        subscription: plan,
+        canOpenPortal: true,
+      });
+    });
+
+    it('falls back to Free when the subscription is no longer live', async () => {
+      repo.getWorkspaceBilling.mockResolvedValue({
+        ...noBilling,
+        stripeCustomerId: 'cus_1',
+        plan: {
+          id: 'pro',
+          status: 'canceled',
+          currentPeriodEnd: null,
+          cancelAtPeriodEnd: false,
+        },
+      });
+      expect((await service.getSubscription(alice, 'alice')).plan).toBe('free');
+    });
+
+    it('is for the owner only (403), and hides other workspaces (404)', async () => {
+      teamRoles = { t1: 'admin' };
+      await expect(service.getSubscription(alice, 't1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      await expect(service.getSubscription(alice, 't2')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
   describe('handleWebhook', () => {
     const raw = Buffer.from('{}');
 
