@@ -156,6 +156,22 @@ Pay with the test card `4242 4242 4242 4242`, using any future expiry date and a
 
 Non-members get a 404 on every team route. Team links use the same membership check, so removing someone takes away their access at once.
 
+### Account and settings
+
+The `/settings` page edits the profile, picks the theme and deletes the account.
+
+- **Profile:** `PATCH /api/account/profile { displayName?, photoURL? }` updates the Firebase Auth user and the `users/{uid}` mirror. An empty value clears the field. There's no upload (no Storage bucket): the avatar is an `https://` image URL, and without one the app shows initials.
+- **Theme:** light, dark or system, kept in `localStorage` on the device. An inline script in `index.html` applies it (and the `theme-color` the browser UI uses) before first paint; "system" follows the OS setting live, and other tabs follow along.
+- **Delete:** `DELETE /api/account` (204) needs a sign-in at most 5 minutes old, otherwise `403 requires_recent_login`; the web app then asks for the password, or a Google popup, and retries. It runs in this order, so a retry after any failure is safe:
+  1. Refuses with `409 owns_team_with_members` (listing the teams) while you own a team that has other members. There's no ownership transfer yet: remove the other members first.
+  2. Locks each team you own alone (`deletingAt`, re-checking its members in the same transaction). From then on nobody can join it or be invited (`409 team_deleting`). Then it locks your personal workspace the same way. Locked workspaces refuse new checkouts and portal sessions (`409 account_deleting` / `team_deleting`). A lock from an attempt that was given up on lapses after 15 minutes; a retry locks again.
+  3. Cancels, at once and without a refund, every Stripe subscription of your personal workspace and of those teams that could still bill (any status but `canceled` and `incomplete_expired`), and expires open checkouts. If Stripe fails, nothing is deleted yet (503). The **Stripe customer is kept**: its invoices are needed for accounting and tax.
+  4. Deletes every one of those team docs first (each re-checked in its transaction; invites to them are invalid from then on), then sweeps the teams' and your personal workspace's data: links, click data, workspace docs, subscription mirrors. Short codes stay retired, without anything tying them to you.
+  5. Leaves your other teams, revoking the pending invites you sent there, deletes `users/{uid}`, then the Firebase Auth user last.
+- **What stays:** the Stripe customer and its invoices; `createdBy` (your uid) on links you created in teams you leave, since those links belong to the team; and admin audit-log entries about your account.
+- The deletion runs within the request. A very large workspace (tens of thousands of links) can outlast a proxy timeout; the steps are idempotent, so retrying continues where it stopped. If the request fails with a 401, a 5xx or a network error, the web app asks Firebase (the Identity Toolkit lookup, directly) whether the user still exists: only `USER_NOT_FOUND` counts as deleted, not a revoked session. Otherwise a 401 shows "your session expired, sign in again" (back to `/settings` afterwards), anything else "try again".
+- Both routes allow 10 requests per minute per user and are refused in impersonated sessions.
+
 ### Admin api
 
 Every route under `/api/admin` needs the `admin` custom claim (`npx nx grant-admin api -- <email>`).

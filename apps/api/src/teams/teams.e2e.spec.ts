@@ -150,6 +150,7 @@ describe('teams api', () => {
 
   beforeEach(() => {
     repo.teams.clear();
+    repo.deleting.clear();
     repo.members.clear();
     repo.invites.clear();
     now = new Date('2026-06-01T12:00:00Z');
@@ -387,6 +388,37 @@ describe('teams api', () => {
           })
         ).status,
       ).toBe(404);
+    });
+
+    it('refuses joins and new invites while the owner deletes their account (409 team_deleting)', async () => {
+      const { body: team } = await call<Team>('POST', '/teams', 'alice', {
+        name: 'Acme',
+      });
+      repo.setPlan(team.id, TEAM_PLAN);
+      const { body } = await call<CreateInviteResponse>(
+        'POST',
+        `/teams/${team.id}/invites`,
+        'alice',
+        { email: 'bob@example.com', role: 'member' },
+      );
+      repo.deleting.add(team.id);
+
+      const accepted = await call('POST', '/invites/accept', 'bob', {
+        token: tokenOf(body),
+      });
+      expect(accepted).toMatchObject({
+        status: 409,
+        body: { code: 'team_deleting' },
+      });
+      const invited = await call('POST', `/teams/${team.id}/invites`, 'alice', {
+        email: 'carol@example.com',
+        role: 'member',
+      });
+      expect(invited).toMatchObject({
+        status: 409,
+        body: { code: 'team_deleting' },
+      });
+      expect(repo.roleOf(team.id, 'bob')).toBeNull();
     });
 
     it('respects the seat limit at accept time', async () => {

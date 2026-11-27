@@ -18,14 +18,25 @@
     />
     <meta name="color-scheme" content="light dark" />
     <script>
-      // Follow the OS colour scheme via the `.dark` class the spartan theme uses.
+      // Before first paint, so there's no flash: the stored choice (light or
+      // dark), else the OS colour scheme, as the `.dark` class the spartan
+      // theme uses. ThemeService (same storage key) takes over once the app
+      // runs, including live OS changes while on "system".
       (function () {
-        var mq = window.matchMedia('(prefers-color-scheme: dark)');
-        var apply = function () {
-          document.documentElement.classList.toggle('dark', mq.matches);
-        };
-        apply();
-        mq.addEventListener('change', apply);
+        var stored = null;
+        try {
+          stored = localStorage.getItem('saas-starter.theme');
+        } catch (e) {}
+        var dark =
+          stored === 'dark' ||
+          (stored !== 'light' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+        // The browser UI too (THEME_COLORS in theme.service.ts).
+        var metas = document.querySelectorAll('meta[name="theme-color"]');
+        for (var i = 0; i < metas.length; i++) {
+          metas[i].content = dark ? '#09090b' : '#ffffff';
+        }
       })();
     </script>
   </head>

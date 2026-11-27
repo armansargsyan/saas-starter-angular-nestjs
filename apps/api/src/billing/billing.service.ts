@@ -48,6 +48,7 @@ export class BillingService {
     plan: PaidPlanId,
   ): Promise<RedirectUrlResponse> {
     const billing = await this.assertOwner(user, workspaceId);
+    this.assertNotDeleting(user, workspaceId, billing);
     const personal = workspaceId === user.uid;
     if ((plan === 'pro') !== personal) {
       throw new BadRequestException(
@@ -102,6 +103,7 @@ export class BillingService {
     workspaceId: string,
   ): Promise<RedirectUrlResponse> {
     const billing = await this.assertOwner(user, workspaceId);
+    this.assertNotDeleting(user, workspaceId, billing);
     const customerId = billing.stripeCustomerId;
     if (!customerId) {
       throw new ConflictException(
@@ -241,6 +243,27 @@ export class BillingService {
       );
     }
     return this.repo.getWorkspaceBilling(workspaceId);
+  }
+
+  /**
+   * No new checkout or portal session while the workspace's owner is
+   * deleting their account: its subscriptions are being canceled.
+   */
+  private assertNotDeleting(
+    user: AuthUser,
+    workspaceId: string,
+    billing: WorkspaceBilling,
+  ): void {
+    if (!billing.deletionLocked) return;
+    throw new ConflictException(
+      workspaceId === user.uid
+        ? errorBody(409, 'account_deleting', 'Your account is being deleted')
+        : errorBody(
+            409,
+            'team_deleting',
+            'This team is being deleted together with its owner’s account',
+          ),
+    );
   }
 
   /** Provider failures become a 503 without leaking Stripe's error details. */

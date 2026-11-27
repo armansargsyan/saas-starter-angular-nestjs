@@ -24,6 +24,7 @@ const alice: AuthUser = {
   emailVerified: true,
   role: 'user',
   tokenIssuedAt: new Date(0),
+  authTime: new Date(0),
 };
 
 const noBilling: WorkspaceBilling = {
@@ -33,6 +34,7 @@ const noBilling: WorkspaceBilling = {
   stripeCustomerId: null,
   stripeSubscriptionId: null,
   plan: null,
+  deletionLocked: false,
 };
 
 const sub = (
@@ -102,6 +104,45 @@ describe('BillingService', () => {
       access as unknown as WorkspaceAccessService,
       config,
     );
+  });
+
+  describe('while an account deletion holds the workspace', () => {
+    it('refuses checkout and portal for the personal workspace (409 account_deleting)', async () => {
+      repo.getWorkspaceBilling.mockResolvedValue({
+        ...noBilling,
+        stripeCustomerId: 'cus_1',
+        deletionLocked: true,
+      });
+      for (const call of [
+        () => service.createCheckout(alice, 'alice', 'pro'),
+        () => service.createPortal(alice, 'alice'),
+      ]) {
+        const err = await call().catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect((err as ConflictException).getResponse()).toMatchObject({
+          code: 'account_deleting',
+        });
+      }
+      expect(provider.createCustomer).not.toHaveBeenCalled();
+      expect(provider.createCheckoutSession).not.toHaveBeenCalled();
+      expect(provider.createPortalSession).not.toHaveBeenCalled();
+    });
+
+    it('refuses checkout for a team being deleted (409 team_deleting)', async () => {
+      teamRoles = { t1: 'owner' };
+      repo.getWorkspaceBilling.mockResolvedValue({
+        ...noBilling,
+        type: 'team',
+        deletionLocked: true,
+      });
+      const err = await service
+        .createCheckout(alice, 't1', 'team')
+        .catch((e: unknown) => e);
+      expect((err as ConflictException).getResponse()).toMatchObject({
+        code: 'team_deleting',
+      });
+      expect(provider.createCheckoutSession).not.toHaveBeenCalled();
+    });
   });
 
   describe('createCheckout', () => {

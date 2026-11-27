@@ -71,6 +71,14 @@ const fb = vi.hoisted(() => {
         setCustomParameters = vi.fn();
       },
       signOut: vi.fn(async () => emit(null)),
+      EmailAuthProvider: {
+        credential: vi.fn((email: string, password: string) => ({
+          email,
+          password,
+        })),
+      },
+      reauthenticateWithCredential: vi.fn(async () => undefined),
+      reauthenticateWithPopup: vi.fn(async () => undefined),
     },
   };
 });
@@ -208,6 +216,148 @@ describe('AuthService', () => {
     expect(user.reload).toHaveBeenCalled();
     expect(user.getIdToken).toHaveBeenCalledWith(true);
     expect(reloaded?.emailVerified).toBe(true);
+  });
+
+  it('re-reads the user after a profile change, so user() shows it', async () => {
+    const auth = create();
+    await settle();
+    const user = fb.makeUser();
+    user.reload.mockImplementation(async () => {
+      Object.assign(user, { displayName: 'Ada', photoURL: 'https://a/b.png' });
+    });
+    fb.emit(user);
+
+    await auth.refreshProfile({ displayName: 'Ada', photoURL: null });
+
+    expect(user.reload).toHaveBeenCalled();
+    expect(auth.user()).toMatchObject({
+      displayName: 'Ada',
+      photoURL: 'https://a/b.png',
+    });
+  });
+
+  it('shows what the api saved when the re-read fails', async () => {
+    const auth = create();
+    await settle();
+    const user = fb.makeUser();
+    user.reload.mockRejectedValue(new Error('offline'));
+    fb.emit(user);
+
+    await auth.refreshProfile({ displayName: 'Ada', photoURL: null });
+
+    expect(auth.user()).toMatchObject({ displayName: 'Ada', photoURL: null });
+  });
+
+  it('re-authenticates a password account and refreshes the token', async () => {
+    const auth = create();
+    await settle();
+    const user = fb.makeUser();
+    fb.emit(user);
+
+    await auth.reauthenticateWithPassword('secret-pw');
+
+    expect(fb.mod.EmailAuthProvider.credential).toHaveBeenCalledWith(
+      'ada@example.com',
+      'secret-pw',
+    );
+    expect(fb.mod.reauthenticateWithCredential).toHaveBeenCalledWith(user, {
+      email: 'ada@example.com',
+      password: 'secret-pw',
+    });
+    expect(user.getIdToken).toHaveBeenCalledWith(true);
+  });
+
+  it('re-authenticates with Google, opening the popup within the click once loaded', async () => {
+    const auth = create();
+    await settle();
+    const user = fb.makeUser({ providerData: [{ providerId: 'google.com' }] });
+    fb.emit(user);
+
+    const done = auth.reauthenticateWithGoogle();
+    // Synchronously, before any await: browsers keep the user gesture.
+    expect(fb.mod.reauthenticateWithPopup).toHaveBeenCalledTimes(1);
+    await done;
+    expect(user.getIdToken).toHaveBeenCalledWith(true);
+  });
+
+  it('passes re-authentication errors on (e.g. a wrong password)', async () => {
+    const auth = create();
+    await settle();
+    fb.emit(fb.makeUser());
+    fb.mod.reauthenticateWithCredential.mockRejectedValueOnce({
+      code: 'auth/invalid-credential',
+    });
+    await expect(auth.reauthenticateWithPassword('nope')).rejects.toEqual({
+      code: 'auth/invalid-credential',
+    });
+  });
+
+  describe('isAccountGone', () => {
+    const answer = (status: number, body: unknown) =>
+      vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(new Response(JSON.stringify(body), { status }));
+
+    async function signedIn(devMode = true) {
+      const auth = create(
+        { ...OPTIONS, authEmulatorUrl: 'http://127.0.0.1:9099' },
+        devMode,
+      );
+      await settle();
+      const user = fb.makeUser();
+      fb.emit(user);
+      return { auth, user };
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('is true only for USER_NOT_FOUND, asked with the current ID token', async () => {
+      const { auth } = await signedIn();
+      const fetch = answer(400, { error: { message: 'USER_NOT_FOUND' } });
+
+      expect(await auth.isAccountGone()).toBe(true);
+      expect(fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:lookup?key=k',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ idToken: 'token' }),
+        }),
+      );
+    });
+
+    it('talks to the real api outside dev mode', async () => {
+      const { auth } = await signedIn(false);
+      const fetch = answer(400, { error: { message: 'USER_NOT_FOUND' } });
+      await auth.isAccountGone();
+      expect(fetch.mock.calls[0][0]).toBe(
+        'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=k',
+      );
+    });
+
+    it.each([
+      ['the account exists', 200, { users: [{ localId: 'u1' }] }],
+      ['the session was revoked', 400, { error: { message: 'TOKEN_EXPIRED' } }],
+      ['the token is invalid', 400, { error: { message: 'INVALID_ID_TOKEN' } }],
+      ['the user is disabled', 400, { error: { message: 'USER_DISABLED' } }],
+    ])('is false when %s', async (_, status, body) => {
+      const { auth } = await signedIn();
+      answer(status, body);
+      expect(await auth.isAccountGone()).toBe(false);
+    });
+
+    it('is false on a network error, a token it cannot get, or no user', async () => {
+      const { auth, user } = await signedIn();
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('offline'));
+      expect(await auth.isAccountGone()).toBe(false);
+
+      user.getIdToken.mockRejectedValueOnce({
+        code: 'auth/user-token-expired',
+      });
+      expect(await auth.isAccountGone()).toBe(false);
+
+      fb.emit(null);
+      expect(await auth.isAccountGone()).toBe(false);
+    });
   });
 
   it('maps role and impersonation claims, ignoring a stale result', async () => {

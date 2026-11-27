@@ -6,9 +6,9 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
-import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { AuthService } from '../core/auth.service';
 import { WorkspaceService } from '../core/workspace.service';
+import { AccountMenu } from './account-menu';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
 /** Layout of the signed-in area: nav, account actions, session banners. */
@@ -19,8 +19,8 @@ import { WorkspaceSwitcher } from './workspace-switcher';
     RouterLink,
     RouterLinkActive,
     HlmAlertImports,
-    HlmButtonImports,
     WorkspaceSwitcher,
+    AccountMenu,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -64,23 +64,9 @@ import { WorkspaceSwitcher } from './workspace-switcher';
             >
           }
         </nav>
-        <div class="ml-auto flex items-center gap-3 text-sm">
+        <div class="ml-auto flex items-center gap-2 text-sm sm:gap-3">
           <app-workspace-switcher class="hidden sm:block" />
-          <span
-            class="text-muted-foreground hidden max-w-48 truncate md:inline"
-            data-testid="account-email"
-          >
-            {{ auth.user()?.email }}
-          </span>
-          <button
-            hlmBtn
-            variant="outline"
-            size="sm"
-            type="button"
-            (click)="signOut()"
-          >
-            Sign out
-          </button>
+          <app-account-menu />
         </div>
       </div>
       @if (workspaces.teams().length) {

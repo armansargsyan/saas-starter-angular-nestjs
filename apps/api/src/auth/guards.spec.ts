@@ -58,6 +58,7 @@ class AdminController {
 }
 
 const ISSUED = new Date('2026-06-01T12:00:00.000Z');
+const AUTH_TIME = new Date('2026-06-01T11:00:00.000Z');
 
 const identity = {
   verifyIdToken: vi.fn(),
@@ -154,12 +155,13 @@ describe('auth guards', () => {
     expect(body).not.toContain('provider detail');
   });
 
-  it('exposes uid, email and role via @CurrentUser()', async () => {
+  it('exposes uid, email, role and sign-in time via @CurrentUser()', async () => {
     identity.verifyIdToken.mockResolvedValue({
       issuedAt: ISSUED,
       uid: 'u1',
       email: 'a@example.com',
       emailVerified: true,
+      authTime: AUTH_TIME,
     });
 
     const res = await get('/t/private', 'good-token');
@@ -171,6 +173,7 @@ describe('auth guards', () => {
       emailVerified: true,
       role: 'user',
       tokenIssuedAt: ISSUED.toISOString(),
+      authTime: AUTH_TIME.toISOString(),
     });
   });
 

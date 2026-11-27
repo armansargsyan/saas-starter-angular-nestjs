@@ -39,6 +39,7 @@ import {
   type InviteResult,
   type StoredInvite,
   type StoredTeam,
+  TeamDeletingError,
   TeamsRepository,
 } from './teams.repository';
 
@@ -328,6 +329,7 @@ export class TeamsService {
       return await write();
     } catch (err) {
       if (err instanceof ActorNotAllowedError) throw notAllowed();
+      if (err instanceof TeamDeletingError) throw teamDeleting();
       throw err;
     }
   }
@@ -360,6 +362,8 @@ function toHttpError(result: Exclude<InviteResult, { ok: true }>) {
   switch (result.reason) {
     case 'seat_limit':
       return seatLimit(result.plan, result.limit);
+    case 'team_deleting':
+      return teamDeleting();
     case 'already_member':
       return new ConflictException(
         errorBody(409, 'already_member', 'You’re already in this team'),
@@ -406,6 +410,16 @@ function inviteError(reason: 'invalid' | 'expired' | 'email_mismatch') {
         errorBody(404, 'invite_invalid', 'This invite is no longer valid'),
       );
   }
+}
+
+function teamDeleting() {
+  return new ConflictException(
+    errorBody(
+      409,
+      'team_deleting',
+      'This team is being deleted together with its owner’s account',
+    ),
+  );
 }
 
 function teamNotFound() {

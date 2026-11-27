@@ -16,6 +16,7 @@ import {
   type StoredInvite,
   type StoredMember,
   type StoredTeam,
+  TeamDeletingError,
   TeamsRepository,
 } from './teams.repository';
 
@@ -26,6 +27,8 @@ export class FakeTeamsRepository extends TeamsRepository {
   readonly teams = new Map<string, StoredTeam>();
   readonly members = new Map<string, Map<string, StoredMember>>();
   readonly invites = new Map<string, Map<string, Invite>>();
+  /** Teams locked by their owner's account deletion (like `deletingAt`). */
+  readonly deleting = new Set<string>();
   private nextId = 1;
   now = () => new Date();
 
@@ -128,6 +131,7 @@ export class FakeTeamsRepository extends TeamsRepository {
     actor: Actor,
   ) {
     this.assertActor(teamId, actor);
+    if (this.deleting.has(teamId)) throw new TeamDeletingError();
     const invites = this.invites.get(teamId) ?? new Map<string, Invite>();
     for (const earlier of invites.values()) {
       if (earlier.email === invite.email && earlier.status === 'pending')
@@ -226,6 +230,8 @@ export class FakeTeamsRepository extends TeamsRepository {
     }
     if (this.roleOf(teamId, invitee.uid))
       return { ok: false, reason: 'already_member' };
+    if (this.deleting.has(teamId))
+      return { ok: false, reason: 'team_deleting' };
     const plan = effectivePlanId(team.plan);
     const limit = PLANS[plan].limits.members;
     if (!hasRoomFor(team.memberCount, limit))

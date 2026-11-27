@@ -16,6 +16,7 @@ import {
   Timestamp,
 } from 'firebase-admin/firestore';
 import { FIRESTORE } from '../firebase/firebase.tokens';
+import { isDeletionLocked } from '../workspaces/workspace-docs';
 import { toWorkspacePlan } from '../workspaces/workspaces.repository';
 import { sameHash } from './invite-token';
 
@@ -69,6 +70,13 @@ export interface Actor {
   allowed: (actorRole: TeamRole) => boolean;
 }
 
+/** The team is locked by its owner's account deletion. */
+export class TeamDeletingError extends Error {
+  constructor() {
+    super('The team is being deleted');
+  }
+}
+
 /** The actor's current role doesn't allow the write (anymore). */
 export class ActorNotAllowedError extends Error {
   constructor() {
@@ -80,7 +88,12 @@ export type InviteResult =
   | { ok: true; teamId: string }
   | {
       ok: false;
-      reason: 'invalid' | 'expired' | 'email_mismatch' | 'already_member';
+      reason:
+        | 'invalid'
+        | 'expired'
+        | 'email_mismatch'
+        | 'already_member'
+        | 'team_deleting';
     }
   | { ok: false; reason: 'seat_limit'; plan: PlanId; limit: number };
 
@@ -121,8 +134,11 @@ export abstract class TeamsRepository {
     canRemove: (actorRole: TeamRole, targetRole: TeamRole) => boolean,
   ): Promise<boolean>;
 
-  /** Creates a pending invite, revoking earlier pending invites to the same email. */
-  /** @throws ActorNotAllowedError */
+  /**
+   * Creates a pending invite, revoking earlier pending invites to the same email.
+   * @throws ActorNotAllowedError
+   * @throws TeamDeletingError
+   */
   abstract createInvite(
     teamId: string,
     inviteId: string,
@@ -304,12 +320,16 @@ export class FirestoreTeamsRepository extends TeamsRepository {
     const invites = this.team(teamId).collection('invites');
     const actorRef = this.team(teamId).collection('members').doc(actor.uid);
     await this.db.runTransaction(async (tx) => {
-      const [actorSnap, earlier] = await Promise.all([
+      const [actorSnap, earlier, team] = await Promise.all([
         tx.get(actorRef),
         tx.get(invites.where('email', '==', invite.email)),
+        tx.get(this.team(teamId)),
       ]);
       if (!actorSnap.exists || !actor.allowed(toRole(actorSnap.get('role')))) {
         throw new ActorNotAllowedError();
+      }
+      if (isDeletionLocked(team.get('deletingAt'), new Date())) {
+        throw new TeamDeletingError();
       }
       for (const doc of earlier.docs) {
         if (doc.get('status') === 'pending')
@@ -448,6 +468,10 @@ export class FirestoreTeamsRepository extends TeamsRepository {
       }
 
       if (member.exists) return { ok: false, reason: 'already_member' };
+      // Its owner is deleting their account (and with it this team).
+      if (isDeletionLocked(team.get('deletingAt'), now)) {
+        return { ok: false, reason: 'team_deleting' };
+      }
       // Seats are checked against the stored count in this transaction, so
       // concurrent accepts can't overshoot the plan's limit.
       const plan = effectivePlanId(toWorkspacePlan(team.get('plan')));

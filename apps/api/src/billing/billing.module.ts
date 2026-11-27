@@ -24,5 +24,7 @@ import { StripeBillingProvider } from './stripe-billing.provider';
     { provide: BillingProvider, useClass: StripeBillingProvider },
     { provide: BillingRepository, useClass: FirestoreBillingRepository },
   ],
+  // Account deletion cancels subscriptions.
+  exports: [BillingProvider],
 })
 export class BillingModule {}

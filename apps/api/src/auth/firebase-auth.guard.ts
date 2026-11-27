@@ -89,6 +89,7 @@ export class FirebaseAuthGuard implements CanActivate {
       // Never admin while impersonated, even if the target was promoted since.
       role: impersonating ? 'user' : roleFromClaim(verified.role),
       tokenIssuedAt: verified.issuedAt,
+      authTime: verified.authTime,
       ...(impersonatedBy !== null && { impersonatedBy }),
     };
     return true;

@@ -4,14 +4,22 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { deleteApp, initializeApp, type App } from 'firebase-admin/app';
-import { type Firestore, getFirestore } from 'firebase-admin/firestore';
+import {
+  type Firestore,
+  getFirestore,
+  Timestamp,
+} from 'firebase-admin/firestore';
+import { DELETION_LOCK_MS } from '../workspaces/workspace-docs';
 import { FirestoreWorkspacesRepository } from '../workspaces/workspaces.repository';
 import {
   createInviteToken,
   hashSecret,
   parseInviteToken,
 } from './invite-token';
-import { FirestoreTeamsRepository } from './teams.repository';
+import {
+  FirestoreTeamsRepository,
+  TeamDeletingError,
+} from './teams.repository';
 
 const host = process.env['FIRESTORE_EMULATOR_HOST'];
 const PROJECT = 'demo-links-test';
@@ -218,6 +226,34 @@ describe.skipIf(!host)('FirestoreTeamsRepository (emulator)', () => {
     ]);
     expect((await repo.getTeam(team.id))?.memberCount).toBe(10);
   }, 60_000);
+
+  it('refuses joins and invites while the team is locked for deletion; a stale lock lapses', async () => {
+    const team = await repo.createTeam({ uid: 'alice', email: null }, 'Acme');
+    await onTeamPlan(team.id);
+    const { inviteId, secretHash } = await invite(team.id, 'bob@example.com');
+    const lock = (msAgo: number) =>
+      db
+        .doc(`workspaces/${team.id}`)
+        .update({ deletingAt: Timestamp.fromMillis(Date.now() - msAgo) });
+    const accept = () =>
+      repo.acceptInvite(
+        team.id,
+        inviteId,
+        secretHash,
+        { uid: 'bob', email: 'bob@example.com' },
+        NOW(),
+      );
+
+    await lock(0);
+    expect(await accept()).toEqual({ ok: false, reason: 'team_deleting' });
+    await expect(invite(team.id, 'carol@example.com')).rejects.toBeInstanceOf(
+      TeamDeletingError,
+    );
+    expect((await repo.getTeam(team.id))?.memberCount).toBe(1);
+
+    await lock(DELETION_LOCK_MS + 1000);
+    expect(await accept()).toEqual({ ok: true, teamId: team.id });
+  });
 
   it('needs a paid Team plan for a second seat', async () => {
     const team = await repo.createTeam({ uid: 'alice', email: null }, 'Acme');

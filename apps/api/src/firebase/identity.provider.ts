@@ -47,6 +47,13 @@ export abstract class IdentityProvider {
     uid: string,
     claims: Record<string, string>,
   ): Promise<string>;
+  /** Sets (or, with null, removes) the profile fields given. */
+  abstract updateProfile(
+    uid: string,
+    profile: { displayName?: string | null; photoURL?: string | null },
+  ): Promise<void>;
+  /** Deletes the account; succeeds when it's already gone (idempotent). */
+  abstract deleteUser(uid: string): Promise<void>;
 }
 
 @Injectable()
@@ -106,6 +113,22 @@ export class FirebaseIdentityProvider extends IdentityProvider {
     claims: Record<string, string>,
   ): Promise<string> {
     return this.auth.createCustomToken(uid, claims);
+  }
+
+  async updateProfile(
+    uid: string,
+    profile: { displayName?: string | null; photoURL?: string | null },
+  ): Promise<void> {
+    await this.auth.updateUser(uid, profile);
+  }
+
+  async deleteUser(uid: string): Promise<void> {
+    try {
+      await this.auth.deleteUser(uid);
+    } catch (err) {
+      if ((err as { code?: unknown }).code === 'auth/user-not-found') return;
+      throw err;
+    }
   }
 }
 

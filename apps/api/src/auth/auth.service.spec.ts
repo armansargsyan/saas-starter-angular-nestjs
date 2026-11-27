@@ -30,6 +30,7 @@ describe('AuthService.me', () => {
     emailVerified: false,
     role: 'user',
     tokenIssuedAt: new Date('2026-06-01T12:00:00Z'),
+    authTime: new Date('2026-06-01T12:00:00Z'),
     ...overrides,
   });
   const workspaces = { getPlan: vi.fn() };
