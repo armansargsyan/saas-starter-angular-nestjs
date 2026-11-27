@@ -9,7 +9,9 @@
     "test": "nx run-many -t test",
     "lint": "nx run-many -t lint",
     "format": "nx format:write",
-    "format:check": "nx format:check"
+    "format:check": "nx format:check",
+    "firebase:web-config": "mkdir -p apps/web/public/__/firebase && firebase apps:sdkconfig WEB -o apps/web/public/__/firebase/init.json",
+    "emulators": "firebase emulators:start --only auth,firestore"
   },
   "private": true,
   "devDependencies": {
