@@ -81,8 +81,12 @@
     "@spartan-ng/brain": "^1.10.1",
     "class-variance-authority": "^0.7.0",
     "cn": "^0.5.2",
+    "firebase-admin": "^14.5.1",
     "reflect-metadata": "^0.2.0",
     "rxjs": "~7.8.0",
     "zod": "^4.6.7"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
