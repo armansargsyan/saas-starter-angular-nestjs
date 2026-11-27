@@ -46,6 +46,12 @@ export const SIGNED_IN_ROUTES: Route[] = [
           import('../features/teams/teams-page').then((m) => m.TeamsPage),
       },
       {
+        path: 'teams/:teamId',
+        title: 'Team · SaaS Starter',
+        loadComponent: () =>
+          import('../features/teams/team-page').then((m) => m.TeamPage),
+      },
+      {
         path: 'admin',
         title: 'Admin · SaaS Starter',
         canActivate: [adminGuard],
