@@ -3,7 +3,6 @@ import {
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import { OVERLAY_DEFAULT_CONFIG } from '@angular/cdk/overlay';
 import {
   provideRouter,
   withComponentInputBinding,
@@ -25,9 +24,5 @@ export const appConfig: ApplicationConfig = {
       }),
     ),
     provideHttpClient(withInterceptors([authInterceptor])),
-    // What `provideSpartanHlm()` provides (overlays stay out of the popover top
-    // layer), imported from the cdk directly: the `@spartan-ng/helm/utils`
-    // barrel would pull `cn` and brain core into the initial bundle.
-    { provide: OVERLAY_DEFAULT_CONFIG, useValue: { usePopover: false } },
   ],
 };
