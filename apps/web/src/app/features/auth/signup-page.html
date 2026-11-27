@@ -1,0 +1,136 @@
+<app-auth-card heading="Create your account" [description]="description()">
+  @if (chosenPlan(); as plan) {
+  <p
+    class="bg-muted mb-4 rounded-md px-3 py-2 text-sm"
+    data-testid="chosen-plan"
+  >
+    You chose <strong>{{ plan.name }}</strong> (${{ plan.priceMonthlyUsd
+    }}/month). {{ plan.id === 'pro' ? 'Checkout comes right after.' : 'You’ll
+    create your team next.' }}
+  </p>
+  }
+  <div role="alert">
+    @if (checkoutFailed()) {
+    <div hlmAlert variant="destructive" data-testid="checkout-failed">
+      <p hlmAlertDescription>
+        Your account is ready, but checkout couldn’t start.
+        <a
+          routerLink="/"
+          fragment="pricing"
+          class="font-medium underline underline-offset-4"
+          >Try again from Pricing</a
+        >
+        or
+        <a
+          routerLink="/dashboard"
+          class="font-medium underline underline-offset-4"
+          >go to your dashboard</a
+        >.
+      </p>
+    </div>
+    }
+  </div>
+  @if (!checkoutFailed()) {
+  <div class="grid gap-4">
+    <app-google-button
+      label="Sign up with Google"
+      [busy]="busy() === 'google'"
+      [disabled]="busy() === 'email'"
+      (pressed)="google()"
+    />
+
+    <div
+      class="text-muted-foreground flex items-center gap-3 text-xs uppercase"
+    >
+      <hr hlmSeparator class="flex-1" />
+      or
+      <hr hlmSeparator class="flex-1" />
+    </div>
+
+    <form
+      class="grid gap-4"
+      [formGroup]="form"
+      (ngSubmit)="submit()"
+      novalidate
+    >
+      <app-form-field
+        for="name"
+        label="Name (optional)"
+        [error]="fieldError('name')"
+      >
+        <input
+          hlmInput
+          id="name"
+          type="text"
+          autocomplete="name"
+          formControlName="name"
+          [attr.maxlength]="maxNameLength"
+          [forceInvalid]="!!fieldError('name')"
+          [attr.aria-invalid]="fieldError('name') ? 'true' : null"
+          [attr.aria-describedby]="fieldError('name') ? 'name-error' : null"
+        />
+      </app-form-field>
+
+      <app-form-field for="email" label="Email" [error]="fieldError('email')">
+        <input
+          hlmInput
+          id="email"
+          type="email"
+          autocomplete="email"
+          formControlName="email"
+          [forceInvalid]="!!fieldError('email')"
+          [attr.aria-invalid]="fieldError('email') ? 'true' : null"
+          [attr.aria-describedby]="fieldError('email') ? 'email-error' : null"
+        />
+      </app-form-field>
+
+      <app-form-field
+        for="password"
+        label="Password"
+        [error]="fieldError('password')"
+        [hint]="'At least ' + minLength + ' characters.'"
+      >
+        <input
+          hlmInput
+          id="password"
+          type="password"
+          autocomplete="new-password"
+          formControlName="password"
+          [forceInvalid]="!!fieldError('password')"
+          [attr.aria-invalid]="fieldError('password') ? 'true' : null"
+          [attr.aria-describedby]="fieldError('password') ? 'password-error' : 'password-hint'"
+        />
+      </app-form-field>
+
+      <div role="alert">
+        @if (error()) {
+        <div hlmAlert variant="destructive" data-testid="auth-error">
+          <p hlmAlertDescription>{{ error() }}</p>
+        </div>
+        }
+      </div>
+
+      <button
+        hlmBtn
+        type="submit"
+        class="w-full aria-disabled:opacity-60"
+        [attr.aria-disabled]="busy() ? 'true' : null"
+        [attr.aria-busy]="busy() === 'email'"
+        data-testid="submit"
+      >
+        {{ busy() === 'email' ? 'Creating account…' : 'Create account' }}
+      </button>
+    </form>
+  </div>
+  }
+
+  <p authFooter>
+    Already have an account?
+    <a
+      routerLink="/login"
+      [queryParams]="redirect() ? { redirect: redirect() } : {}"
+      class="text-foreground font-medium underline-offset-4 hover:underline"
+      >Sign in</a
+    >
+  </p>
+</app-auth-card>

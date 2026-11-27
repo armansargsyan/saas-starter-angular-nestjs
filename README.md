@@ -38,6 +38,26 @@ npm run emulators             # Auth :9099, Firestore :8080, emulator UI :4000
 
 The web app loads its Firebase config at runtime from `/__/firebase/init.json`. Firebase Hosting serves it in production, and the command above generates it for local dev. Production builds leave the generated file out, so `nx serve-static web` (which serves the production build) can't boot without Hosting; use `npm start` locally. Firestore rules deny all client access: only the api reads and writes, through the Admin SDK.
 
+**Sign-in against the emulators (no real accounts):**
+
+```sh
+npm run emulators                       # Auth :9099, Firestore :8080
+npm run firebase:web-config:emulator    # points the web app at the Auth emulator (dev builds only)
+# api: add FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 and FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 to .env
+npm start
+```
+
+- Verification and reset emails are not sent: their links are listed by the emulator at `http://127.0.0.1:9099/emulator/v1/projects/<project>/oobCodes`.
+- Run `npm run firebase:web-config` to switch back to the real project.
+
+**Web app routes:**
+
+- `/login` and `/signup` (email/password or Google) send signed-in users to the dashboard.
+- `/reset-password` sends a Firebase reset email.
+- `/verify-email` is for password accounts.
+- Signed-in pages redirect to `/login?redirect=…`.
+- Admin pages also need the `admin` claim. The api checks every admin call itself, too.
+
 ### Auth and roles
 
 - **Authentication:** every api route needs a Firebase ID token (`Authorization: Bearer …`). Routes opt out with `@Public()`. Read the caller with `@CurrentUser()`, which gives `uid`, `email`, `emailVerified` and `role`. Anything that grants access by email must check `emailVerified`.

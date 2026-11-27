@@ -11,7 +11,8 @@
     "format": "nx format:write",
     "format:check": "nx format:check",
     "firebase:web-config": "mkdir -p apps/web/public/__/firebase && firebase apps:sdkconfig WEB -o apps/web/public/__/firebase/init.json",
-    "emulators": "firebase emulators:start --only auth,firestore"
+    "emulators": "firebase emulators:start --only auth,firestore",
+    "firebase:web-config:emulator": "node tools/scripts/web-config-emulator.mjs"
   },
   "private": true,
   "devDependencies": {
