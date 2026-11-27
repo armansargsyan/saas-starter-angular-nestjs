@@ -1,0 +1,122 @@
+<a
+  href="#main"
+  class="bg-background focus:ring-ring sr-only z-50 rounded-md px-3 py-2 text-sm focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:ring-2"
+  >Skip to content</a
+>
+<app-site-header />
+
+<main id="main" tabindex="-1" class="outline-none">
+  <section
+    aria-labelledby="hero-title"
+    class="mx-auto max-w-6xl px-4 pt-20 pb-16 text-center sm:px-6 sm:pt-28"
+  >
+    <p class="text-muted-foreground mb-4 text-sm font-medium">
+      Angular + NestJS SaaS starter
+    </p>
+    <h1
+      id="hero-title"
+      class="mx-auto max-w-3xl text-4xl font-semibold tracking-tight text-balance sm:text-6xl"
+    >
+      Short links with real analytics, on a SaaS foundation that's ready to ship
+    </h1>
+    <p class="text-muted-foreground mx-auto mt-6 max-w-2xl text-lg text-pretty">
+      Create links, see who clicks and from where, work as a team, and upgrade
+      with Stripe. Auth, plans, billing, teams and an admin panel are already
+      done.
+    </p>
+    <div
+      class="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
+    >
+      @if (auth.signedIn()) {
+      <a
+        hlmBtn
+        size="lg"
+        routerLink="/dashboard"
+        [class.invisible]="!auth.ready()"
+        class="w-full sm:w-auto"
+        data-testid="hero-cta"
+      >
+        Go to your dashboard
+      </a>
+      } @else {
+      <a
+        hlmBtn
+        size="lg"
+        routerLink="/signup"
+        [class.invisible]="!auth.ready()"
+        class="w-full sm:w-auto"
+        data-testid="hero-cta"
+      >
+        Get started free
+      </a>
+      }
+      <a
+        hlmBtn
+        size="lg"
+        variant="outline"
+        href="#pricing"
+        class="w-full sm:w-auto"
+        >See pricing</a
+      >
+    </div>
+  </section>
+
+  <section
+    id="features"
+    aria-labelledby="features-title"
+    class="bg-muted/40 scroll-mt-14 border-y"
+  >
+    <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <h2
+        id="features-title"
+        class="text-center text-3xl font-semibold tracking-tight"
+      >
+        Everything a SaaS needs, working end to end
+      </h2>
+      <ul role="list" class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        @for (feature of features; track feature.title) {
+        <li hlmCard>
+          <div hlmCardHeader>
+            <span
+              class="bg-primary/10 text-primary mb-2 grid size-10 place-items-center rounded-lg"
+              aria-hidden="true"
+            >
+              <ng-icon [name]="feature.icon" size="20" />
+            </span>
+            <h3 hlmCardTitle>{{ feature.title }}</h3>
+          </div>
+          <p hlmCardContent class="text-muted-foreground">{{ feature.body }}</p>
+        </li>
+        }
+      </ul>
+    </div>
+  </section>
+
+  <section
+    id="pricing"
+    aria-labelledby="pricing-title"
+    class="mx-auto max-w-6xl scroll-mt-14 px-4 py-20 sm:px-6"
+  >
+    <h2
+      id="pricing-title"
+      class="text-center text-3xl font-semibold tracking-tight"
+    >
+      Simple, monthly pricing
+    </h2>
+    <p class="text-muted-foreground mt-3 text-center">
+      Start free. Upgrade when you need more. Cancel any time.
+    </p>
+    <div class="mt-12">
+      <app-pricing-table />
+    </div>
+  </section>
+</main>
+
+<footer class="text-muted-foreground border-t">
+  <div
+    class="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm sm:flex-row sm:justify-between sm:px-6"
+  >
+    <p>SaaS Starter, a portfolio project. Payments run in Stripe test mode.</p>
+    <a href="#main" class="hover:text-foreground">Back to top</a>
+  </div>
+</footer>

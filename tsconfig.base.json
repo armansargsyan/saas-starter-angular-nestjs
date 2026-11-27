@@ -25,7 +25,8 @@
         "./libs/ui/native-select/src/index.ts"
       ],
       "@spartan-ng/helm/sheet": ["./libs/ui/sheet/src/index.ts"],
-      "@spartan-ng/helm/textarea": ["./libs/ui/textarea/src/index.ts"]
+      "@spartan-ng/helm/textarea": ["./libs/ui/textarea/src/index.ts"],
+      "@spartan-ng/helm/card": ["./libs/ui/card/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

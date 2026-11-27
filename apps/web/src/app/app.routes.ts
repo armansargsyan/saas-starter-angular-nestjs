@@ -4,9 +4,9 @@ export const appRoutes: Route[] = [
   {
     path: '',
     pathMatch: 'full',
-    title: 'SaaS Starter',
+    title: 'SaaS Starter: short links with analytics',
     loadComponent: () =>
-      import('./features/home/home-page').then((m) => m.HomePage),
+      import('./features/landing/landing-page').then((m) => m.LandingPage),
   },
   { path: '**', redirectTo: '' },
 ];
