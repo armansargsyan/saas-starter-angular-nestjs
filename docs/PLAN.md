@@ -21,9 +21,10 @@ Links, usage counters and the subscription hang off the workspace. This keeps pl
 | `workspaces/{workspaceId}`             | type (`personal` \| `team`), name, ownerUid, plan `{ id, status, currentPeriodEnd, cancelAtPeriodEnd }`, stripeCustomerId, stripeSubscriptionId, linkCount, memberCount, createdAt | Personal id = uid; plan is written **only** by Stripe webhooks                    |
 | `workspaces/{id}/members/{uid}`        | role (`owner` \| `admin` \| `member`), email, joinedAt                                                                                                                             | Team workspaces only                                                              |
 | `workspaces/{id}/invites/{inviteId}`   | email (lowercased), role, tokenHash, invitedBy, expiresAt, status                                                                                                                  | Token is sent by email, only its hash is stored                                   |
-| `links/{code}`                         | workspaceId, targetUrl, title, createdBy, createdAt, clickCount, lastClickedAt                                                                                                     | The **doc id is the short code**: uniqueness via `create()`, O(1) redirect lookup |
-| `links/{code}/daily/{yyyy-mm-dd}`      | count, referrers `{host: n}`, countries `{cc: n}`, devices `{type: n}`                                                                                                             | Pre-aggregated with `FieldValue.increment`, so charts read ≤ 90 small docs        |
+| `links/{code}`                         | workspaceId, targetUrl, title, createdBy, createdAt, clickCount, botClickCount, lastClickedAt                                                                                      | The **doc id is the short code**: uniqueness via `create()`, O(1) redirect lookup |
+| `links/{code}/daily/{yyyy-mm-dd}`      | count, bots, referrers `{host: n}` (≤ 100 hosts/day, rest under `other`), countries `{cc: n}`, devices `{type: n}`                                                                 | Pre-aggregated with `FieldValue.increment`, so charts read ≤ 90 small docs        |
 | `links/{code}/clicks/{autoId}`         | at, referrerHost, country, device, expireAt                                                                                                                                        | Raw events with a Firestore **TTL** (90 days)                                     |
+| `retiredCodes/{code}`                  | workspaceId, retiredAt                                                                                                                                                             | Codes of deleted links: never reissued, so shared links can't be hijacked         |
 | `subscriptions/{stripeSubscriptionId}` | workspaceId, plan, status, amount, currency, interval, currentPeriodEnd, updatedAt                                                                                                 | Mirror used for admin revenue stats (MRR)                                         |
 | `stripeEvents/{eventId}`               | type, processedAt                                                                                                                                                                  | Webhook idempotency                                                               |
 | `auditLog/{autoId}`                    | actorUid, action, targetUid, at, meta                                                                                                                                              | Admin actions (ban, impersonate, role changes)                                    |
@@ -95,7 +96,7 @@ sequenceDiagram
 - **Auth guard:** a global guard verifies the Firebase ID token (`verifyIdToken` with revocation check). `@Public()` opts a route out, and `@CurrentUser()` returns `{ uid, email, role, impersonatedBy? }`.
 - **Roles:**
   - **Global role** comes from the `role` custom claim, set by an admin endpoint or a CLI script. `@Roles('admin')` protects the admin api.
-  - **Workspace role** (owner, admin or member) comes from the members subcollection, checked by a `WorkspaceAccessGuard` on every `/workspaces/:id/...` route.
+  - **Workspace role** (owner, admin or member) comes from the members subcollection. Access is checked by `WorkspaceAccessService` (owner of a personal workspace, or a member of a team), which returns 404 for workspaces the caller can't access. Role-based checks (for example, only admins can invite) arrive with teams in #7.
 - **Ban:** disable the Firebase Auth user, revoke its refresh tokens, and set `status: banned`. The guard rejects banned users even if they still hold a valid token.
 - **Impersonation:**
   - The admin gets a short-lived custom token for the target user, carrying the claim `impersonatedBy`.
@@ -108,12 +109,13 @@ sequenceDiagram
 
 ## Links and analytics
 
-- **Short codes:** random 7-character base62, or a custom slug (3–32 characters, `[a-z0-9-]`, with reserved words blocked).
+- **Short codes:** random 7-character base62, or a custom slug (3–32 characters, `[a-z0-9-]`, with reserved words blocked). A deleted link's code is retired and never reissued.
 - **Target URLs:** only `http`/`https`, and links back to our own domain are refused, to prevent redirect loops.
 - **Redirects:**
   - `GET /r/:code` is a public route outside the `/api` prefix. Hosting rewrites `/r/**` to Cloud Run.
   - It looks up the link, writes **one batch** (increment `clickCount`, the daily aggregate and the raw click), then answers with a 302 (`Cache-Control: no-store`) so every click is counted.
   - The write is awaited, because Cloud Run throttles CPU after the response is sent.
+  - Known limit: every click on a link writes the same link and daily docs, so one very hot link is capped by Firestore's per-document write rate (about 1 per second sustained). Extra clicks are dropped and logged, and redirects are unaffected. Sharded counters would lift the cap if it's ever needed.
   - Unknown codes return a 404 page.
 - **Click data:**
   - The referrer is stored as its host only.

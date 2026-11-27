@@ -23,6 +23,15 @@ export const envSchema = z.object({
     .default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
 
+  // Public origin of the app (web + short links), e.g. https://example.web.app.
+  // Short URLs are built from it, and links pointing back to it are refused.
+  APP_URL: nonEmpty
+    .pipe(z.url({ protocol: /^https?$/, error: 'must be an http(s) URL' }))
+    .transform((value) => new URL(value).origin),
+  // Proxies in front of the api that append to X-Forwarded-For (Cloud Run: 1;
+  // Firebase Hosting -> Cloud Run: 2). Used to find the real client IP.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
+
   // Firebase Admin. Credentials come from Application Default Credentials
   // (Cloud Run's service account, or GOOGLE_APPLICATION_CREDENTIALS locally);
   // the SDK reads *_EMULATOR_HOST itself when the emulators are running.

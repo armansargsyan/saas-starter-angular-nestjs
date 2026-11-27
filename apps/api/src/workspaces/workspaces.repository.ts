@@ -12,6 +12,8 @@ import { FIRESTORE } from '../firebase/firebase.tokens';
 export abstract class WorkspacesRepository {
   /** `workspaces/{id}.plan`, or null when the workspace or plan is absent. */
   abstract getPlan(workspaceId: string): Promise<WorkspacePlan | null>;
+  /** Whether `uid` is in `workspaces/{id}/members` (team workspaces). */
+  abstract isMember(workspaceId: string, uid: string): Promise<boolean>;
 }
 
 @Injectable()
@@ -23,6 +25,16 @@ export class FirestoreWorkspacesRepository extends WorkspacesRepository {
   async getPlan(workspaceId: string): Promise<WorkspacePlan | null> {
     const snap = await this.db.collection('workspaces').doc(workspaceId).get();
     return toWorkspacePlan(snap.get('plan'));
+  }
+
+  async isMember(workspaceId: string, uid: string): Promise<boolean> {
+    const snap = await this.db
+      .collection('workspaces')
+      .doc(workspaceId)
+      .collection('members')
+      .doc(uid)
+      .get();
+    return snap.exists;
   }
 }
 

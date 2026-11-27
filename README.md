@@ -55,6 +55,22 @@ The web app loads its Firebase config at runtime from `/__/firebase/init.json`. 
   - **Revoking** also revokes their sessions, so it takes effect at once.
   - **Audit log:** every change is written to `auditLog`.
 
+### Links api
+
+| Method and path                                       | What it does                                                                      |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `POST /api/workspaces/:workspaceId/links`             | Create a link: `{ targetUrl, title?, slug? }`. Limited to 30 per minute per user. |
+| `GET /api/workspaces/:workspaceId/links?limit&cursor` | List links, newest first.                                                         |
+| `GET` / `PATCH` / `DELETE /api/links/:code`           | Read, update (`targetUrl`, `title`) or delete one link.                           |
+| `GET /api/links/:code/stats?days=30`                  | Clicks per day, top referrers and countries, devices (up to 90 days).             |
+| `GET /r/:code`                                        | Public. 302 redirect that records the click; unknown codes get a 404 page.        |
+
+- **Workspaces:** your personal workspace id is your uid. Links in a workspace you can't access return 404.
+- **Click data:** each click stores only the referrer host, the country and the device type, never the IP. The country comes from an offline geoip-lite lookup.
+- **Bots** are counted separately.
+- **Inflation guard:** each IP counts at most 10 clicks per link per minute. Clicks over the limit still redirect, they just aren't counted.
+- **Raw clicks** expire after 90 days through a Firestore TTL policy.
+
 ## License
 
 [MIT](LICENSE) © 2026 Arman Sargsyan

@@ -42,12 +42,16 @@ export class FirestoreUsersRepository extends UsersRepository {
   }
 
   async createIfAbsent(profile: UserProfile): Promise<UserProfile> {
-    const { uid, roleChangedAt: _unused, ...fields } = profile;
+    const { uid, email, displayName, photoURL, role, status } = profile;
     try {
-      await this.db
-        .collection('users')
-        .doc(uid)
-        .create({ ...fields, createdAt: FieldValue.serverTimestamp() });
+      await this.db.collection('users').doc(uid).create({
+        email,
+        displayName,
+        photoURL,
+        role,
+        status,
+        createdAt: FieldValue.serverTimestamp(),
+      });
       return profile;
     } catch (err) {
       // A concurrent first request created it first: use theirs.

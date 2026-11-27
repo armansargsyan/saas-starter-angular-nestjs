@@ -1,13 +1,14 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
+import { configureApp, GLOBAL_PREFIX } from './app/configure-app';
 import { AppConfigService } from './config/app-config.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const globalPrefix = 'api';
-  app.setGlobalPrefix(globalPrefix);
-  const port = app.get(AppConfigService).port;
+  const config = app.get(AppConfigService);
+  configureApp(app, { trustProxyHops: config.trustProxyHops });
+  const port = config.port;
   await app.listen(port);
   // Set when Nx waits for this server to be ready
   if (process.env.NX_READY_SIGNAL_SOCKET) {
@@ -22,7 +23,7 @@ async function bootstrap() {
     }
   }
   Logger.log(
-    `🚀 Application is running on: http://localhost:${port}/${globalPrefix}`,
+    `🚀 Application is running on: http://localhost:${port}/${GLOBAL_PREFIX}`,
   );
 }
 
