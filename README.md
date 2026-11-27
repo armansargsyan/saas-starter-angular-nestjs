@@ -24,3 +24,7 @@ npm ci
 npm start                              # api on :3000, web on :4200 (proxies /api)
 npx nx run-many -t lint test build     # all checks
 ```
+
+## License
+
+[MIT](LICENSE) © 2026 Arman Sargsyan
