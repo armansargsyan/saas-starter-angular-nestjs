@@ -4,11 +4,13 @@ import {
   ForbiddenException,
   HttpException,
   Injectable,
+  NotFoundException,
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   type ApiErrorBody,
+  can,
   effectivePlanId,
   type InvoiceListResponse,
   type PaidPlanId,
@@ -211,22 +213,19 @@ export class BillingService {
     return null;
   }
 
-  /** Billing is managed by the workspace owner only. */
+  /** Billing is managed by the workspace owner only (the team role decides). */
   private async assertOwner(
     user: AuthUser,
     workspaceId: string,
   ): Promise<WorkspaceBilling> {
-    await this.access.assertAccess(user, workspaceId); // 404 if not a member
-    const billing = await this.repo.getWorkspaceBilling(workspaceId);
-    const isOwner =
-      workspaceId === user.uid ||
-      (billing.exists && billing.ownerUid === user.uid);
-    if (!isOwner) {
+    const role = await this.access.getRole(user, workspaceId);
+    if (!role) throw new NotFoundException('Workspace not found');
+    if (!can(role, 'manageBilling')) {
       throw new ForbiddenException(
         'Only the workspace owner can manage billing',
       );
     }
-    return billing;
+    return this.repo.getWorkspaceBilling(workspaceId);
   }
 
   /** Provider failures become a 503 without leaking Stripe's error details. */

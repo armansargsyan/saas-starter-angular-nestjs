@@ -26,7 +26,8 @@ import { WorkspacesRepository } from '../workspaces/workspaces.repository';
 import { FakeLinksRepository } from './fake-links.repository';
 import { GeoLocator } from './geo.locator';
 import { CodeTakenError, LinksRepository } from './links.repository';
-import { CREATE_LINK_LIMIT, LinksModule } from './links.module';
+import { RATE_LIMITS } from '../common/rate-limit.module';
+import { LinksModule } from './links.module';
 
 const NOW = new Date('2026-06-10T12:00:00Z');
 const MAC_CHROME =
@@ -585,11 +586,11 @@ describe('links api', () => {
   });
 
   describe('rate limit on create', () => {
-    it(`allows ${CREATE_LINK_LIMIT.limit} creates per minute per user, then 429`, async () => {
+    it(`allows ${RATE_LIMITS.createLink.limit} creates per minute per user, then 429`, async () => {
       repo.plans.set('carol', 'pro'); // the plan limit isn't what's tested here
       repo.plans.set('dave', 'pro');
       const statuses: number[] = [];
-      for (let i = 0; i <= CREATE_LINK_LIMIT.limit; i++) {
+      for (let i = 0; i <= RATE_LIMITS.createLink.limit; i++) {
         statuses.push(
           (await createLink('carol', { targetUrl: 'https://a.com' })).res
             .status,
