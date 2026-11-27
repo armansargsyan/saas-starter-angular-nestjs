@@ -1,0 +1,94 @@
+<app-auth-card
+  heading="Sign in"
+  description="Welcome back. Sign in to manage your links."
+>
+  <div class="grid gap-4">
+    <app-google-button
+      [busy]="busy() === 'google'"
+      [disabled]="busy() === 'email'"
+      (pressed)="google()"
+    />
+
+    <div
+      class="text-muted-foreground flex items-center gap-3 text-xs uppercase"
+    >
+      <hr hlmSeparator class="flex-1" />
+      or
+      <hr hlmSeparator class="flex-1" />
+    </div>
+
+    <form
+      class="grid gap-4"
+      [formGroup]="form"
+      (ngSubmit)="submit()"
+      novalidate
+    >
+      <app-form-field for="email" label="Email" [error]="fieldError('email')">
+        <input
+          hlmInput
+          id="email"
+          type="email"
+          autocomplete="email"
+          formControlName="email"
+          [forceInvalid]="!!fieldError('email')"
+          [attr.aria-invalid]="fieldError('email') ? 'true' : null"
+          [attr.aria-describedby]="fieldError('email') ? 'email-error' : null"
+        />
+      </app-form-field>
+
+      <app-form-field
+        for="password"
+        label="Password"
+        [error]="fieldError('password')"
+      >
+        <input
+          hlmInput
+          id="password"
+          type="password"
+          autocomplete="current-password"
+          formControlName="password"
+          [forceInvalid]="!!fieldError('password')"
+          [attr.aria-invalid]="fieldError('password') ? 'true' : null"
+          [attr.aria-describedby]="fieldError('password') ? 'password-error' : null"
+        />
+      </app-form-field>
+
+      <div class="-mt-2 text-right text-sm">
+        <a
+          routerLink="/reset-password"
+          class="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+          >Forgot your password?</a
+        >
+      </div>
+
+      <div role="alert">
+        @if (error()) {
+        <div hlmAlert variant="destructive" data-testid="auth-error">
+          <p hlmAlertDescription>{{ error() }}</p>
+        </div>
+        }
+      </div>
+
+      <button
+        hlmBtn
+        type="submit"
+        class="w-full aria-disabled:opacity-60"
+        [attr.aria-disabled]="busy() ? 'true' : null"
+        [attr.aria-busy]="busy() === 'email'"
+        data-testid="submit"
+      >
+        {{ busy() === 'email' ? 'Signing in…' : 'Sign in' }}
+      </button>
+    </form>
+  </div>
+
+  <p authFooter>
+    New here?
+    <a
+      routerLink="/signup"
+      [queryParams]="redirect() ? { redirect: redirect() } : {}"
+      class="text-foreground font-medium underline-offset-4 hover:underline"
+      >Create an account</a
+    >
+  </p>
+</app-auth-card>

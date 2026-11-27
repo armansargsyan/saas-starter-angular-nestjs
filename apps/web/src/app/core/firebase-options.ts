@@ -11,6 +11,11 @@ export interface FirebaseOptions {
   appId: string;
   storageBucket?: string;
   messagingSenderId?: string;
+  /**
+   * Local dev only (`npm run firebase:web-config:emulator`): talk to the Auth
+   * emulator at this URL. Ignored in production builds.
+   */
+  authEmulatorUrl?: string;
 }
 
 export const FIREBASE_OPTIONS = new InjectionToken<FirebaseOptions>(
@@ -46,6 +51,7 @@ export function parseFirebaseOptions(value: unknown): FirebaseOptions {
     appId: raw['appId'] as string,
     storageBucket: optional('storageBucket'),
     messagingSenderId: optional('messagingSenderId'),
+    authEmulatorUrl: optional('authEmulatorUrl'),
   };
 }
 
