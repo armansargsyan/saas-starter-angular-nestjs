@@ -313,5 +313,32 @@ describe('billing api', () => {
       );
       expect(await invoices.json()).toEqual({ items: [] });
     });
+
+    it('reports the subscription to the owner, validating the query', async () => {
+      const get = (query: string) =>
+        fetch(`${baseUrl}/api/billing/subscription${query}`, {
+          headers: { Authorization: 'Bearer alice' },
+        });
+      const res = await get('?workspaceId=alice');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        workspaceId: 'alice',
+        plan: 'free',
+        subscription: null,
+        canOpenPortal: false,
+      });
+      expect((await get('')).status).toBe(400);
+      expect((await get('?workspaceId=bob')).status).toBe(404);
+    });
+
+    it('validates the invoices query and hides other workspaces', async () => {
+      const get = (query: string) =>
+        fetch(`${baseUrl}/api/billing/invoices${query}`, {
+          headers: { Authorization: 'Bearer alice' },
+        });
+      expect((await get('')).status).toBe(400);
+      expect((await get('?workspaceId=alice&extra=1')).status).toBe(400);
+      expect((await get('?workspaceId=bob')).status).toBe(404);
+    });
   });
 });

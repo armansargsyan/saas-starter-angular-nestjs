@@ -1,0 +1,296 @@
+<div class="grid">
+  <h1 class="text-2xl font-semibold tracking-tight">Billing</h1>
+
+  <!-- Mounted from the start so the messages are announced; spaced only when shown. -->
+  <div role="status" class="not-empty:mt-6">
+    @switch (checkoutReturn()) { @case ('activating') {
+    <div hlmAlert data-testid="return-activating">
+      <p hlmAlertTitle>Payment received</p>
+      <p hlmAlertDescription>Activating your plan… this takes a few seconds.</p>
+    </div>
+    } @case ('activated') {
+    <div hlmAlert class="flex items-start gap-2" data-testid="return-activated">
+      <ng-icon name="lucideCheck" aria-hidden="true" />
+      <div class="flex-1">
+        <p hlmAlertTitle>You’re on {{ plan().name }}</p>
+        <p hlmAlertDescription>Thanks! Your new limits apply right away.</p>
+      </div>
+      <button
+        hlmBtn
+        variant="ghost"
+        size="icon-xs"
+        type="button"
+        aria-label="Dismiss"
+        (click)="dismissReturn()"
+      >
+        <ng-icon name="lucideX" aria-hidden="true" />
+      </button>
+    </div>
+    } @case ('slow') {
+    <div hlmAlert data-testid="return-slow">
+      <p hlmAlertTitle>Payment received</p>
+      <p hlmAlertDescription>
+        Your plan is taking longer than usual to update. Refresh this page in a
+        minute; you won’t be charged twice.
+      </p>
+    </div>
+    } @case ('canceled') {
+    <div hlmAlert class="flex items-start gap-2" data-testid="return-canceled">
+      <p hlmAlertDescription class="flex-1">
+        Checkout was canceled. You haven’t been charged.
+      </p>
+      <button
+        hlmBtn
+        variant="ghost"
+        size="icon-xs"
+        type="button"
+        aria-label="Dismiss"
+        (click)="dismissReturn()"
+      >
+        <ng-icon name="lucideX" aria-hidden="true" />
+      </button>
+    </div>
+    } }
+  </div>
+
+  <div role="alert" class="not-empty:mt-6">
+    @if (actionError()) {
+    <div hlmAlert variant="destructive" data-testid="action-error">
+      <p hlmAlertDescription>{{ actionError() }}</p>
+    </div>
+    }
+  </div>
+
+  @if (!workspaceId() || (sub.isLoading() && !sub.hasValue())) {
+  <hlm-skeleton
+    class="mt-6 h-40 w-full"
+    aria-hidden="true"
+    data-testid="loading"
+  />
+  } @else if (notOwner()) {
+  <div hlmCard class="mt-6" data-testid="not-owner">
+    <p hlmCardContent>Only the workspace owner can manage billing.</p>
+  </div>
+  } @else if (sub.error()) {
+  <div hlmCard class="mt-6 text-center" role="alert" data-testid="load-error">
+    <p hlmCardContent>
+      Couldn’t load your plan.
+      <button hlmBtn variant="link" type="button" (click)="sub.reload()">
+        Try again
+      </button>
+    </p>
+  </div>
+  } @else { @if (pastDue()) {
+  <div hlmAlert variant="destructive" class="mt-6" data-testid="past-due">
+    <p hlmAlertTitle>Your last payment failed</p>
+    <p hlmAlertDescription>
+      Update your payment method to keep {{ plan().name }}. Stripe will retry
+      the charge.
+    </p>
+  </div>
+  }
+
+  <div class="mt-6 grid gap-6 md:grid-cols-2">
+    <section hlmCard aria-labelledby="current-plan" data-testid="current-plan">
+      <div hlmCardHeader>
+        <h2 hlmCardTitle id="current-plan" class="flex items-center gap-2">
+          {{ plan().name }} plan @if (statusLabel(); as label) {
+          <span
+            hlmBadge
+            [variant]="pastDue() ? 'destructive' : 'secondary'"
+            data-testid="status"
+          >
+            {{ label }}
+          </span>
+          }
+        </h2>
+        <p hlmCardDescription>
+          @if (plan().priceMonthlyUsd) { ${{ plan().priceMonthlyUsd }} per month
+          } @else { Free forever }
+        </p>
+      </div>
+      <div hlmCardContent class="grid gap-4">
+        @if (isPaid() && subscription()?.currentPeriodEnd; as end) {
+        <p class="text-sm" data-testid="renewal">
+          @if (subscription()?.cancelAtPeriodEnd) { Ends on
+          <strong>{{ end | date: 'longDate' }}</strong>. You keep {{ plan().name
+          }} until then. } @else { Renews on
+          <strong>{{ end | date: 'longDate' }}</strong>. }
+        </p>
+        }
+        <ul class="text-muted-foreground grid gap-1 text-sm">
+          @for (feature of plan().features; track feature) {
+          <li class="flex items-center gap-2">
+            <ng-icon
+              name="lucideCheck"
+              class="text-foreground"
+              aria-hidden="true"
+            />
+            {{ feature }}
+          </li>
+          }
+        </ul>
+      </div>
+      @if (subValue()?.canOpenPortal) {
+      <div hlmCardFooter>
+        <button
+          hlmBtn
+          variant="outline"
+          type="button"
+          [attr.aria-busy]="busy() === 'portal'"
+          (click)="manage()"
+          data-testid="manage"
+        >
+          {{ busy() === 'portal' ? 'Opening…' : 'Manage billing' }}
+        </button>
+      </div>
+      }
+    </section>
+
+    @if (upgradeTo(); as target) {
+    <section hlmCard aria-labelledby="upgrade-plan" data-testid="upgrade-card">
+      <div hlmCardHeader>
+        <h2 hlmCardTitle id="upgrade-plan">Upgrade to {{ target.name }}</h2>
+        <p hlmCardDescription>
+          ${{ target.priceMonthlyUsd }} per month. Cancel anytime.
+        </p>
+      </div>
+      <div hlmCardContent>
+        <ul class="text-muted-foreground grid gap-1 text-sm">
+          @for (feature of target.features; track feature) {
+          <li class="flex items-center gap-2">
+            <ng-icon
+              name="lucideCheck"
+              class="text-foreground"
+              aria-hidden="true"
+            />
+            {{ feature }}
+          </li>
+          }
+        </ul>
+      </div>
+      <div hlmCardFooter>
+        <button
+          hlmBtn
+          type="button"
+          [attr.aria-busy]="busy() === 'checkout'"
+          (click)="upgrade(target.id)"
+          data-testid="upgrade"
+        >
+          {{ busy() === 'checkout' ? 'Redirecting…' : 'Upgrade to ' +
+          target.name }}
+        </button>
+      </div>
+    </section>
+    }
+  </div>
+
+  <section aria-labelledby="invoices-title" class="mt-8 grid gap-3">
+    <h2 id="invoices-title" class="text-lg font-semibold">Invoices</h2>
+    @if (invoices.isLoading() && !invoices.hasValue()) {
+    <hlm-skeleton class="h-24 w-full" aria-hidden="true" />
+    } @else if (invoices.error()) {
+    <p
+      class="text-muted-foreground text-sm"
+      role="alert"
+      data-testid="invoices-error"
+    >
+      Couldn’t load your invoices.
+      <button
+        hlmBtn
+        variant="link"
+        type="button"
+        class="h-auto p-0"
+        (click)="invoices.reload()"
+      >
+        Try again
+      </button>
+    </p>
+    } @else if (invoiceRows().length === 0) {
+    <p class="text-muted-foreground text-sm" data-testid="no-invoices">
+      No invoices yet. They appear here after your first payment.
+    </p>
+    } @else {
+    <div class="overflow-x-auto rounded-xl border">
+      <table class="w-full text-sm" data-testid="invoice-table">
+        <thead class="text-muted-foreground text-left">
+          <tr class="border-b">
+            <th scope="col" class="px-2 py-3 sm:p-3 font-medium">Date</th>
+            <th
+              scope="col"
+              class="hidden px-2 py-3 sm:p-3 font-medium sm:table-cell"
+            >
+              Invoice
+            </th>
+            <th scope="col" class="px-2 py-3 sm:p-3 text-right font-medium">
+              Amount
+            </th>
+            <th scope="col" class="px-2 py-3 sm:p-3 font-medium">Status</th>
+            <th scope="col" class="px-2 py-3 sm:p-3">
+              <span class="sr-only">Links</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (invoice of invoiceRows(); track invoice.id) {
+          <tr class="border-b last:border-0">
+            <td class="px-2 py-3 sm:p-3 whitespace-nowrap">
+              {{ invoice.createdAt | date: 'mediumDate' }}
+            </td>
+            <td class="hidden px-2 py-3 sm:p-3 whitespace-nowrap sm:table-cell">
+              {{ invoice.number ?? '—' }}
+            </td>
+            <td class="px-2 py-3 sm:p-3 text-right tabular-nums">
+              {{ invoice.amountLabel }}
+            </td>
+            <td class="px-2 py-3 sm:p-3">
+              <span
+                hlmBadge
+                [variant]="invoice.status === 'paid' ? 'secondary' : 'outline'"
+              >
+                {{ invoice.statusLabel }}
+              </span>
+            </td>
+            <td class="px-2 py-3 sm:p-3 text-right whitespace-nowrap">
+              @if (invoice.hostedInvoiceUrl) {
+              <a
+                hlmBtn
+                variant="link"
+                class="h-auto p-0"
+                [href]="invoice.hostedInvoiceUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="invoice-link"
+              >
+                View
+                <span class="sr-only"
+                  >invoice {{ invoice.number ?? '' }} (opens in a new tab)</span
+                >
+                <ng-icon name="lucideExternalLink" aria-hidden="true" />
+              </a>
+              } @if (invoice.pdfUrl) {
+              <a
+                hlmBtn
+                variant="link"
+                class="ml-3 h-auto p-0"
+                [href]="invoice.pdfUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                PDF
+                <span class="sr-only"
+                  >of invoice {{ invoice.number ?? '' }} (opens in a new
+                  tab)</span
+                >
+              </a>
+              }
+            </td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+  </section>
+  }
+</div>

@@ -12,9 +12,10 @@ import {
 import {
   checkoutRequestSchema,
   type InvoiceListResponse,
-  invoicesQuerySchema,
   portalRequestSchema,
   type RedirectUrlResponse,
+  type SubscriptionResponse,
+  workspaceQuerySchema,
 } from '@saas-starter/shared';
 import type { Request } from 'express';
 import type { z } from 'zod';
@@ -47,11 +48,20 @@ export class BillingController {
     return this.billing.createPortal(user, body.workspaceId);
   }
 
+  @Get('subscription')
+  subscription(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(workspaceQuerySchema))
+    query: z.output<typeof workspaceQuerySchema>,
+  ): Promise<SubscriptionResponse> {
+    return this.billing.getSubscription(user, query.workspaceId);
+  }
+
   @Get('invoices')
   invoices(
     @CurrentUser() user: AuthUser,
-    @Query(new ZodValidationPipe(invoicesQuerySchema))
-    query: z.output<typeof invoicesQuerySchema>,
+    @Query(new ZodValidationPipe(workspaceQuerySchema))
+    query: z.output<typeof workspaceQuerySchema>,
   ): Promise<InvoiceListResponse> {
     return this.billing.listInvoices(user, query.workspaceId);
   }
