@@ -78,7 +78,10 @@ describe('billing api', () => {
       .overrideProvider(BillingRepository)
       .useValue(repo)
       .overrideProvider(WorkspacesRepository)
-      .useValue({ isMember: vi.fn().mockResolvedValue(false) })
+      .useValue({
+        isMember: vi.fn().mockResolvedValue(false),
+        getMemberRole: vi.fn().mockResolvedValue(null),
+      })
       .compile();
     app = moduleRef.createNestApplication({ rawBody: true, logger: false });
     configureApp(app, { trustProxyHops: 1 });

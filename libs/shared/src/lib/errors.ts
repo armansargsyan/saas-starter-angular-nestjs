@@ -17,6 +17,16 @@ export const API_ERROR_CODES = [
   'no_billing_account',
   /** 400: the plan doesn't fit the workspace (Pro: personal, Team: team). */
   'plan_not_available',
+  /** 404: the invite doesn't exist, was revoked or already used. */
+  'invite_invalid',
+  /** 410: the invite expired. */
+  'invite_expired',
+  /** 403: the invite is for another email address. */
+  'invite_email_mismatch',
+  /** 403: your email must be verified to accept an invite. */
+  'email_not_verified',
+  /** 409: already a member of this team. */
+  'already_member',
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 

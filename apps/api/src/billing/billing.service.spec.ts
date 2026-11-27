@@ -71,7 +71,9 @@ describe('BillingService', () => {
     applySubscription: vi.fn(),
     endSubscription: vi.fn(),
   };
-  const access = { assertAccess: vi.fn() };
+  /** Role per team workspace; the caller owns their personal workspace. */
+  let teamRoles: Record<string, 'owner' | 'admin' | 'member'> = {};
+  const access = { getRole: vi.fn() };
   const config = {
     appUrl: 'https://app.example.com',
     stripe: { prices: { pro: 'price_pro', team: 'price_team' } },
@@ -85,6 +87,10 @@ describe('BillingService', () => {
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     provider.listLiveSubscriptions.mockResolvedValue([]);
     repo.getWorkspaceBilling.mockResolvedValue(noBilling);
+    teamRoles = {};
+    access.getRole.mockImplementation(async (user: AuthUser, ws: string) =>
+      ws === user.uid ? 'owner' : (teamRoles[ws] ?? null),
+    );
     repo.saveCustomerId.mockImplementation(async (_ws, id) => id);
     provider.createCustomer.mockResolvedValue('cus_new');
     provider.createCheckoutSession.mockResolvedValue(
@@ -138,6 +144,7 @@ describe('BillingService', () => {
     });
 
     it('sells Pro only to personal and Team only to team workspaces', async () => {
+      teamRoles = { 'team-1': 'owner' };
       await expect(
         service.createCheckout(alice, 'alice', 'team'),
       ).rejects.toMatchObject({
@@ -205,17 +212,10 @@ describe('BillingService', () => {
     });
 
     it('lets only the owner of a team buy (403), and hides others (404)', async () => {
-      repo.getWorkspaceBilling.mockResolvedValue({
-        ...noBilling,
-        exists: true,
-        type: 'team',
-        ownerUid: 'bob',
-      });
+      teamRoles = { 'team-1': 'admin' };
       await expect(
         service.createCheckout(alice, 'team-1', 'team'),
       ).rejects.toBeInstanceOf(ForbiddenException);
-
-      access.assertAccess.mockRejectedValue(new NotFoundException());
       await expect(
         service.createCheckout(alice, 'team-2', 'team'),
       ).rejects.toBeInstanceOf(NotFoundException);

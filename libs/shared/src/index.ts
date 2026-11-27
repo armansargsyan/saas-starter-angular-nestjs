@@ -3,4 +3,5 @@ export * from './lib/billing';
 export * from './lib/errors';
 export * from './lib/health';
 export * from './lib/plans';
+export * from './lib/teams';
 export * from './lib/links';

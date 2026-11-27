@@ -5,6 +5,7 @@ import { AppConfigModule } from '../config/app-config.module';
 import { FirebaseModule } from '../firebase/firebase.module';
 import { HealthModule } from '../health/health.module';
 import { LinksModule } from '../links/links.module';
+import { TeamsModule } from '../teams/teams.module';
 import { UsageModule } from '../usage/usage.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { UsageModule } from '../usage/usage.module';
     LinksModule,
     UsageModule,
     BillingModule,
+    TeamsModule,
   ],
 })
 export class AppModule {}

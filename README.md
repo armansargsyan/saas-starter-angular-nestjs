@@ -115,6 +115,27 @@ Pay with the test card `4242 4242 4242 4242`, using any future expiry date and a
 - **Plan switching:** don't let the portal switch between the Pro and Team products. Pro belongs to personal workspaces and Team to teams, and the webhook ignores a plan that doesn't fit the workspace.
 - **Live mode:** live-mode events are ignored. The api only runs in test mode.
 
+### Teams
+
+- **Create:** `POST /api/teams { name }`. The creator becomes the owner. Adding members needs the Team plan (up to 10 seats), bought through billing checkout for the team.
+- **Invite:** `POST /api/teams/:id/invites { email, role }` returns `{ invite, acceptUrl }`.
+  - The token is `<teamId>.<inviteId>.<256-bit secret>`. Only the secret's SHA-256 is stored, and invites expire after 7 days.
+  - No email provider is set up yet: the inviter shares `acceptUrl`, and `InviteMailer` is where one plugs in.
+- **Accept:** the invitee opens `<APP_URL>/invite#token=…`, signs in, then calls `POST /api/invites/preview|accept|decline { token }`. The token sits in the URL fragment and in request bodies, never in a query string, so it stays out of server logs and `Referer` headers.
+  - Accepting needs a **verified** email that matches the invite.
+  - Seats are checked in the same transaction that adds the member.
+  - Invite endpoints allow 20 requests per minute per user. Creating teams and sending invites share a limit of 30 per minute.
+  - Removing members, inviting and revoking re-check the caller's role inside the transaction, so a just-demoted admin can't finish a write.
+- **Manage:** `GET /api/teams/:id/members`, `PATCH /api/teams/:id/members/:uid { role }`, `DELETE /api/teams/:id/members/:uid` (remove someone, or leave yourself), and `DELETE /api/teams/:id/invites/:inviteId` (revoke).
+
+| Permission                                                     | Owner | Admin | Member |
+| -------------------------------------------------------------- | :---: | :---: | :----: |
+| Billing, changing roles, inviting admins                       |   ✓   |       |        |
+| Inviting members, removing members, revoking invites, renaming |   ✓   |   ✓   |        |
+| Team links, member list                                        |   ✓   |   ✓   |   ✓    |
+
+Non-members get a 404 on every team route. Team links use the same membership check, so removing someone takes away their access at once.
+
 ## License
 
 [MIT](LICENSE) © 2026 Arman Sargsyan

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import type { TeamRole } from '@saas-starter/shared';
 import type { AuthUser } from '../auth/auth-user';
 import { WorkspacesRepository } from './workspaces.repository';
 
@@ -14,6 +15,12 @@ export class WorkspaceAccessService {
   async canAccess(user: AuthUser, workspaceId: string): Promise<boolean> {
     if (workspaceId === user.uid) return true;
     return this.workspaces.isMember(workspaceId, user.uid);
+  }
+
+  /** The caller's role: `owner` of their personal workspace, else their team role. */
+  async getRole(user: AuthUser, workspaceId: string): Promise<TeamRole | null> {
+    if (workspaceId === user.uid) return 'owner';
+    return this.workspaces.getMemberRole(workspaceId, user.uid);
   }
 
   /** 404, not 403: don't reveal that someone else's workspace exists. */

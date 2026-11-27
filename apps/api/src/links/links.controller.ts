@@ -25,7 +25,8 @@ import type { AuthUser } from '../auth/auth-user';
 import { CurrentUser } from '../auth/decorators';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { LinksService } from './links.service';
-import { UserThrottlerGuard } from './user-throttler.guard';
+import { onlyLimit } from '../common/only-limit.decorator';
+import { UserThrottlerGuard } from '../common/user-throttler.guard';
 
 @Controller()
 export class LinksController {
@@ -33,6 +34,7 @@ export class LinksController {
 
   @Post('workspaces/:workspaceId/links')
   @UseGuards(UserThrottlerGuard)
+  @onlyLimit('createLink')
   create(
     @CurrentUser() user: AuthUser,
     @Param('workspaceId', new ZodValidationPipe(workspaceIdSchema))

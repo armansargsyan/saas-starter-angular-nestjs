@@ -4,6 +4,8 @@ import {
   PLAN_STATUSES,
   type PlanId,
   type PlanStatus,
+  TEAM_ROLES,
+  type TeamRole,
   type WorkspacePlan,
 } from '@saas-starter/shared';
 import { type Firestore, Timestamp } from 'firebase-admin/firestore';
@@ -22,6 +24,11 @@ export abstract class WorkspacesRepository {
   abstract getPlan(workspaceId: string): Promise<WorkspacePlan | null>;
   /** Whether `uid` is in `workspaces/{id}/members` (team workspaces). */
   abstract isMember(workspaceId: string, uid: string): Promise<boolean>;
+  /** The member's role in a team workspace, or null if not a member. */
+  abstract getMemberRole(
+    workspaceId: string,
+    uid: string,
+  ): Promise<TeamRole | null>;
   /** Null when the workspace doc doesn't exist yet. */
   abstract getUsage(
     workspaceId: string,
@@ -54,13 +61,25 @@ export class FirestoreWorkspacesRepository extends WorkspacesRepository {
   }
 
   async isMember(workspaceId: string, uid: string): Promise<boolean> {
+    return (await this.getMemberRole(workspaceId, uid)) !== null;
+  }
+
+  async getMemberRole(
+    workspaceId: string,
+    uid: string,
+  ): Promise<TeamRole | null> {
     const snap = await this.db
       .collection('workspaces')
       .doc(workspaceId)
       .collection('members')
       .doc(uid)
       .get();
-    return snap.exists;
+    if (!snap.exists) return null;
+    const role = snap.get('role');
+    // A member doc without a valid role still counts as a plain member.
+    return (TEAM_ROLES as readonly unknown[]).includes(role)
+      ? (role as TeamRole)
+      : 'member';
   }
 }
 
