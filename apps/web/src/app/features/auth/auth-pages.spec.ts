@@ -1,3 +1,4 @@
+import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -11,11 +12,14 @@ import { FakeAuth } from '../../../testing/fake-auth';
 import { settle } from '../../../testing/settle';
 import { AuthService } from '../../core/auth.service';
 import { BillingService } from '../../core/billing.service';
-import { DashboardPage } from '../dashboard/dashboard-page';
 import { LoginPage } from './login-page';
 import { ResetPasswordPage } from './reset-password-page';
 import { SignupPage } from './signup-page';
 import { VerifyEmailPage } from './verify-email-page';
+
+/** Stands in for the real dashboard (its data loading is tested elsewhere). */
+@Component({ template: 'dashboard' })
+class DashboardStub {}
 
 describe('auth pages', () => {
   let auth: FakeAuth;
@@ -34,7 +38,7 @@ describe('auth pages', () => {
             { path: 'signup', component: SignupPage },
             { path: 'reset-password', component: ResetPasswordPage },
             { path: 'verify-email', component: VerifyEmailPage },
-            { path: 'dashboard', component: DashboardPage },
+            { path: 'dashboard', component: DashboardStub },
             { path: 'teams', children: [] },
             { path: 'links/:code', children: [] },
             { path: '', children: [] },
@@ -335,27 +339,6 @@ describe('auth pages', () => {
       } finally {
         vi.useRealTimers();
       }
-    });
-  });
-
-  describe('dashboard placeholder', () => {
-    it('asks unverified password users to verify; Google users never', async () => {
-      auth.signIn('u1', { emailVerified: false, providers: ['password'] });
-      await harness.navigateByUrl('/dashboard');
-      expect(q('[data-testid="verify-banner"]')).not.toBeNull();
-
-      auth.signIn('u1', { emailVerified: false, providers: ['google.com'] });
-      await harness.fixture.whenStable();
-      expect(q('[data-testid="verify-banner"]')).toBeNull();
-    });
-
-    it('signs out to the home page', async () => {
-      auth.signIn();
-      await harness.navigateByUrl('/dashboard');
-      el().querySelector('button')?.click();
-      await settle();
-      expect(auth.signOut).toHaveBeenCalled();
-      expect(router.url).toBe('/');
     });
   });
 });

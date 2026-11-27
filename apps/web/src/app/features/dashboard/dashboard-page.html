@@ -1,0 +1,248 @@
+<div class="grid gap-6">
+  <div class="flex flex-wrap items-center gap-3">
+    <h1 class="mr-auto text-2xl font-semibold tracking-tight">Links</h1>
+    @if (!readOnly()) {
+    <button hlmBtn type="button" (click)="openCreate()" data-testid="new-link">
+      <ng-icon name="lucidePlus" aria-hidden="true" />
+      New link
+    </button>
+    }
+  </div>
+
+  @if (workspaceId(); as ws) { @if (usage.error()) {
+  <p class="text-muted-foreground text-sm" data-testid="usage-error">
+    Couldn’t load your plan usage.
+    <button
+      hlmBtn
+      variant="link"
+      type="button"
+      class="h-auto p-0"
+      (click)="usage.reload()"
+    >
+      Try again
+    </button>
+  </p>
+  } @else {
+  <app-usage-meter
+    [usage]="usageValue()"
+    [workspaceId]="ws"
+    [personal]="personal()"
+  />
+  } }
+
+  <section aria-labelledby="links-title" class="grid gap-3">
+    <h2 id="links-title" class="sr-only">Your links</h2>
+    <div class="flex items-center gap-3">
+      <label for="link-search" class="sr-only">Search links</label>
+      <input
+        hlmInput
+        id="link-search"
+        type="search"
+        placeholder="Search by code, URL or title"
+        class="max-w-sm"
+        [value]="query()"
+        (input)="onSearch($event)"
+        data-testid="search"
+      />
+    </div>
+
+    <p role="status" class="sr-only" data-testid="announcement">
+      {{ announcement() }}
+    </p>
+    <div role="alert">
+      @if (notice()) {
+      <div
+        hlmAlert
+        variant="destructive"
+        class="flex items-start gap-2"
+        data-testid="notice"
+      >
+        <p hlmAlertDescription class="flex-1">{{ notice() }}</p>
+        <button
+          hlmBtn
+          variant="ghost"
+          size="icon-xs"
+          type="button"
+          aria-label="Dismiss"
+          (click)="notice.set(null)"
+        >
+          <ng-icon name="lucideX" aria-hidden="true" />
+        </button>
+      </div>
+      }
+    </div>
+
+    @if (links.isLoading() && !links.hasValue()) {
+    <div class="grid gap-2" aria-hidden="true" data-testid="loading">
+      @for (row of [1, 2, 3]; track row) {
+      <hlm-skeleton class="h-16 w-full" />
+      }
+    </div>
+    } @else if (links.error()) {
+    <div hlmCard class="text-center" role="alert" data-testid="load-error">
+      <p hlmCardContent>
+        Couldn’t load your links.
+        <button hlmBtn variant="link" type="button" (click)="links.reload()">
+          Try again
+        </button>
+      </p>
+    </div>
+    } @else if (allLinks().length === 0) {
+    <div hlmCard class="text-center" data-testid="empty">
+      <div hlmCardContent class="grid justify-items-center gap-3 py-6">
+        <p class="font-medium">No links yet</p>
+        <p class="text-muted-foreground text-sm">
+          Create your first short link to start counting clicks.
+        </p>
+        @if (!readOnly()) {
+        <button hlmBtn type="button" (click)="openCreate()">
+          Create a link
+        </button>
+        }
+      </div>
+    </div>
+    } @else if (visible().length === 0) {
+    <p
+      class="text-muted-foreground py-6 text-center text-sm"
+      data-testid="no-matches"
+    >
+      No links match “{{ query() }}”.
+    </p>
+    } @else {
+    <ul role="list" class="divide-y rounded-xl border" data-testid="link-list">
+      @for (link of visible(); track link.code) {
+      <li
+        class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"
+        [attr.data-code]="link.code"
+      >
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <a
+              [routerLink]="['/links', link.code]"
+              class="truncate font-medium underline-offset-4 hover:underline"
+              data-testid="short-url"
+              >{{ link.shortUrl.replace('https://', '').replace('http://', '')
+              }}</a
+            >
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon-sm"
+              type="button"
+              [attr.aria-label]="'Copy ' + link.shortUrl"
+              (click)="copy(link)"
+              data-testid="copy"
+            >
+              <ng-icon name="lucideCopy" aria-hidden="true" />
+            </button>
+          </div>
+          <p
+            class="text-muted-foreground truncate text-sm"
+            [title]="link.targetUrl"
+          >
+            @if (link.title) {
+            <span class="text-foreground">{{ link.title }}</span> · } {{
+            link.targetUrl }}
+          </p>
+        </div>
+        <div class="flex items-center gap-4 text-sm">
+          <span class="tabular-nums" data-testid="clicks">
+            {{ link.clickCount | number }} click{{ link.clickCount === 1 ? '' :
+            's' }}
+          </span>
+          <span class="text-muted-foreground hidden md:inline"
+            >{{ link.createdAt | date: 'mediumDate' }}</span
+          >
+          <div class="flex gap-1">
+            <a
+              hlmBtn
+              variant="ghost"
+              size="icon-sm"
+              [routerLink]="['/links', link.code]"
+              [attr.aria-label]="'Stats for ' + link.code"
+            >
+              <ng-icon name="lucideChartColumn" aria-hidden="true" />
+            </a>
+            @if (!readOnly()) {
+            <button
+              hlmBtn
+              variant="ghost"
+              size="icon-sm"
+              type="button"
+              [attr.aria-label]="'Edit ' + link.code"
+              (click)="openEdit(link)"
+              data-testid="edit"
+            >
+              <ng-icon name="lucidePencil" aria-hidden="true" />
+            </button>
+            <hlm-alert-dialog>
+              <button
+                hlmAlertDialogTrigger
+                hlmBtn
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                [attr.aria-label]="'Delete ' + link.code"
+                data-testid="delete"
+              >
+                <ng-icon name="lucideTrash2" aria-hidden="true" />
+              </button>
+              <hlm-alert-dialog-content
+                *hlmAlertDialogPortal="let ctx"
+                size="sm"
+              >
+                <hlm-alert-dialog-header>
+                  <h2 hlmAlertDialogTitle>Delete {{ link.code }}?</h2>
+                  <p hlmAlertDialogDescription>
+                    The short link stops working and its stats are deleted. The
+                    code can’t be reused, so links you’ve shared won’t point
+                    anywhere else.
+                  </p>
+                </hlm-alert-dialog-header>
+                <hlm-alert-dialog-footer>
+                  <button hlmAlertDialogCancel>Cancel</button>
+                  <button
+                    hlmAlertDialogAction
+                    variant="destructive"
+                    [attr.aria-busy]="deleting() === link.code"
+                    (click)="remove(link, ctx.close)"
+                    data-testid="confirm-delete"
+                  >
+                    {{ deleting() === link.code ? 'Deleting…' : 'Delete link' }}
+                  </button>
+                </hlm-alert-dialog-footer>
+              </hlm-alert-dialog-content>
+            </hlm-alert-dialog>
+            }
+          </div>
+        </div>
+      </li>
+      }
+    </ul>
+    @if (nextCursor() && !query()) {
+    <div class="flex justify-center">
+      <button
+        hlmBtn
+        variant="outline"
+        type="button"
+        [attr.aria-busy]="loadingMore()"
+        (click)="loadMore()"
+        data-testid="load-more"
+      >
+        {{ loadingMore() ? 'Loading…' : 'Load more' }}
+      </button>
+    </div>
+    } }
+  </section>
+</div>
+
+@if (workspaceId(); as ws) {
+<app-link-form-dialog
+  [open]="dialogOpen()"
+  [workspaceId]="ws"
+  [editing]="editing()"
+  (saved)="onSaved($event)"
+  (closed)="dialogOpen.set(false)"
+  (planLimitHit)="onLimitReached()"
+/>
+}

@@ -1,0 +1,150 @@
+<div class="grid gap-6">
+  <a
+    routerLink="/dashboard"
+    class="text-muted-foreground hover:text-foreground w-fit text-sm"
+    >← All links</a
+  >
+
+  @if (notFound()) {
+  <div hlmCard class="text-center" data-testid="not-found">
+    <div hlmCardContent class="py-6">
+      <h1 class="text-lg font-semibold">Link not found</h1>
+      <p class="text-muted-foreground mt-1 text-sm">
+        It was deleted, or it isn’t yours.
+      </p>
+    </div>
+  </div>
+  } @else {
+  <header class="grid gap-1">
+    @if (linkValue(); as l) {
+    <h1
+      class="text-2xl font-semibold tracking-tight break-all"
+      data-testid="link-title"
+    >
+      {{ l.title || l.code }}
+    </h1>
+    <p class="text-muted-foreground text-sm break-all">
+      <a
+        [href]="l.shortUrl"
+        class="text-foreground underline-offset-4 hover:underline"
+        >{{ l.shortUrl }}</a
+      >
+      → {{ l.targetUrl }}
+    </p>
+    <p class="text-muted-foreground text-xs">
+      Created {{ l.createdAt | date: 'medium' }}
+    </p>
+    } @else if (link.error()) {
+    <h1 class="text-2xl font-semibold tracking-tight">{{ code() }}</h1>
+    <p role="alert" class="text-destructive text-sm">
+      Couldn’t load this link.
+      <button
+        hlmBtn
+        variant="link"
+        type="button"
+        class="h-auto p-0"
+        (click)="link.reload()"
+        data-testid="retry-link"
+      >
+        Try again
+      </button>
+    </p>
+    } @else {
+    <hlm-skeleton class="h-8 w-64" />
+    <hlm-skeleton class="h-4 w-96 max-w-full" />
+    }
+  </header>
+
+  <section hlmCard aria-labelledby="clicks-title">
+    <div hlmCardHeader class="flex flex-wrap items-center gap-3">
+      <div class="mr-auto">
+        <h2 hlmCardTitle id="clicks-title">Clicks per day</h2>
+        @if (statsValue(); as s) {
+        <p hlmCardDescription data-testid="totals">
+          {{ s.totalClicks | number }} click{{ s.totalClicks === 1 ? '' : 's' }}
+          in the last {{ days() }} days @if (s.botClicks) { · {{ s.botClicks |
+          number }} from bots (not counted) }
+        </p>
+        }
+      </div>
+      <div
+        role="group"
+        aria-label="Time range"
+        class="bg-muted inline-flex rounded-lg p-0.5"
+      >
+        @for (range of ranges; track range) {
+        <button
+          type="button"
+          class="rounded-md px-3 py-1 text-sm"
+          [class.bg-background]="days() === range"
+          [class.shadow-xs]="days() === range"
+          [class.text-muted-foreground]="days() !== range"
+          [attr.aria-pressed]="days() === range"
+          (click)="days.set(range)"
+          [attr.data-testid]="'range-' + range"
+        >
+          {{ range }}d
+        </button>
+        }
+      </div>
+    </div>
+    <div hlmCardContent>
+      @if (statsValue(); as s) {
+      <app-clicks-chart [days]="s.days" />
+      } @else if (stats.error()) {
+      <p role="alert" class="text-destructive text-sm">
+        Couldn’t load the stats.
+        <button hlmBtn variant="link" type="button" (click)="stats.reload()">
+          Try again
+        </button>
+      </p>
+      } @else {
+      <hlm-skeleton class="h-[180px] w-full" />
+      }
+    </div>
+  </section>
+
+  <div class="grid gap-6 md:grid-cols-3">
+    <section hlmCard aria-labelledby="ref-title">
+      <div hlmCardHeader>
+        <h2 hlmCardTitle id="ref-title">Top referrers</h2>
+      </div>
+      <div hlmCardContent>
+        <app-ranked-list
+          [items]="referrers()"
+          label="Top referrers"
+          empty="No referrers yet (direct visits don’t send one)."
+        />
+      </div>
+    </section>
+    <section hlmCard aria-labelledby="country-title">
+      <div hlmCardHeader>
+        <h2 hlmCardTitle id="country-title">Top countries</h2>
+      </div>
+      <div hlmCardContent>
+        <app-ranked-list
+          [items]="countries()"
+          label="Top countries"
+          empty="No clicks yet."
+        />
+      </div>
+    </section>
+    <section hlmCard aria-labelledby="device-title">
+      <div hlmCardHeader><h2 hlmCardTitle id="device-title">Devices</h2></div>
+      <div hlmCardContent>
+        <dl class="grid grid-cols-2 gap-4" data-testid="devices">
+          @for (d of devices(); track d.label) {
+          <div>
+            <dt class="text-muted-foreground text-sm">{{ d.label }}</dt>
+            <dd class="text-2xl font-semibold tabular-nums">{{ d.pct }}%</dd>
+            <dd class="text-muted-foreground text-xs tabular-nums">
+              {{ d.count | number }} clicks
+            </dd>
+          </div>
+          }
+        </dl>
+      </div>
+    </section>
+  </div>
+  }
+</div>

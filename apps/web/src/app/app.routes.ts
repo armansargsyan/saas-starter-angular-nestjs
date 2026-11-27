@@ -1,5 +1,5 @@
 import { Route } from '@angular/router';
-import { adminGuard, signedInGuard, signedOutGuard } from './core/auth.guards';
+import { signedInGuard, signedOutGuard } from './core/auth.guards';
 
 export const appRoutes: Route[] = [
   {
@@ -40,21 +40,12 @@ export const appRoutes: Route[] = [
         (m) => m.VerifyEmailPage,
       ),
   },
+  // The signed-in app, inside the shell (nav, banners).
   {
-    path: 'dashboard',
-    title: 'Dashboard · SaaS Starter',
+    path: '',
     canActivate: [signedInGuard],
-    loadComponent: () =>
-      import('./features/dashboard/dashboard-page').then(
-        (m) => m.DashboardPage,
-      ),
-  },
-  {
-    path: 'admin',
-    title: 'Admin · SaaS Starter',
-    canActivate: [signedInGuard, adminGuard],
-    loadComponent: () =>
-      import('./features/admin/admin-page').then((m) => m.AdminPage),
+    loadChildren: () =>
+      import('./layout/signed-in.routes').then((m) => m.SIGNED_IN_ROUTES),
   },
   { path: '**', redirectTo: '' },
 ];
