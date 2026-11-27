@@ -67,3 +67,6 @@ ui-debug.log
 
 # Playwright MCP output
 .playwright-mcp/
+
+# generated Firebase web config for local dev (`npm run firebase:web-config`)
+apps/web/public/__/

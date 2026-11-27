@@ -36,7 +36,14 @@
               "maximumError": "8kb"
             }
           ],
-          "outputHashing": "all"
+          "outputHashing": "all",
+          "assets": [
+            {
+              "glob": "**/*",
+              "input": "apps/web/public",
+              "ignore": ["__/**"]
+            }
+          ]
         },
         "development": {
           "optimization": false,
