@@ -17,10 +17,17 @@ export class AuthService {
 
   /** The caller's profile; creates `users/{uid}` on first sign-in. */
   async me(user: AuthUser): Promise<MeResponse> {
+    // Impersonated sessions are strictly read-only: no profile creation and
+    // no mirror sync, only what's already there (or the identity record).
+    const readOnly = user.impersonatedBy !== undefined;
     const profile =
-      (await this.users.get(user.uid)) ?? (await this.createProfile(user));
+      (await this.users.get(user.uid)) ??
+      (await this.createProfile(user, { persist: !readOnly }));
 
-    await this.syncRoleMirror(user, profile);
+    if (!readOnly) {
+      await this.syncRoleMirror(user, profile);
+      await this.syncEmailMirror(user, profile);
+    }
 
     // Personal workspace id = uid.
     const plan = effectivePlanId(await this.workspaces.getPlan(user.uid));
@@ -33,6 +40,7 @@ export class AuthService {
       photoURL: profile.photoURL,
       role: user.role,
       plan,
+      impersonatedBy: user.impersonatedBy ?? null,
     };
   }
 
@@ -56,20 +64,42 @@ export class AuthService {
     }
   }
 
-  private async createProfile(user: AuthUser): Promise<UserProfile> {
+  /**
+   * Keeps the stored email (lowercased, for admin search) in step with the
+   * verified token: fixes older mixed-case profiles and later email changes.
+   * Best effort, like the role mirror.
+   */
+  private async syncEmailMirror(user: AuthUser, profile: UserProfile) {
+    const email = user.email?.toLowerCase();
+    if (!email || email === profile.email) return;
+    try {
+      await this.users.setEmail(user.uid, email);
+    } catch (err) {
+      this.logger.warn(
+        `Could not sync email mirror for ${user.uid}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async createProfile(
+    user: AuthUser,
+    { persist }: { persist: boolean },
+  ): Promise<UserProfile> {
     const record = await this.identity.getUser(user.uid);
     if (!record) {
       // Deleted between token verification and now.
       throw new UnauthorizedException('Account no longer exists');
     }
-    return this.users.createIfAbsent({
+    const profile: UserProfile = {
       uid: user.uid,
-      email: record.email,
+      // Lowercased, so admin search by email prefix finds it.
+      email: record.email?.toLowerCase() ?? null,
       displayName: record.displayName,
       photoURL: record.photoURL,
       role: user.role,
       status: 'active',
       roleChangedAt: null,
-    });
+    };
+    return persist ? this.users.createIfAbsent(profile) : profile;
   }
 }

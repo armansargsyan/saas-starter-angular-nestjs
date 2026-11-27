@@ -7,7 +7,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import { Controller, Get, type INestApplication } from '@nestjs/common';
+import { Controller, Get, type INestApplication, Post } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { IdentityProvider } from '../firebase/identity.provider';
@@ -21,6 +21,11 @@ class TestController {
   @Public()
   @Get('public')
   open() {
+    return { ok: true };
+  }
+
+  @Post('private')
+  write() {
     return { ok: true };
   }
 
@@ -205,6 +210,84 @@ describe('auth guards', () => {
 
   it('returns 401 (not 403) on an admin route without a token', async () => {
     expect((await get('/t/admin')).status).toBe(401);
+  });
+
+  describe('impersonated sessions', () => {
+    const impersonated = (
+      authTime: Date,
+      impersonatedAt: Date | null = authTime,
+      role?: string,
+    ) =>
+      identity.verifyIdToken.mockResolvedValue({
+        uid: 'u1',
+        emailVerified: true,
+        issuedAt: new Date(),
+        authTime,
+        impersonatedBy: 'admin-1',
+        impersonatedAt,
+        role,
+      });
+
+    it('can read, and are marked on @CurrentUser()', async () => {
+      impersonated(new Date());
+      const res = await get('/t/private', 'token');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        uid: 'u1',
+        impersonatedBy: 'admin-1',
+      });
+    });
+
+    it('cannot write (403 impersonation_read_only)', async () => {
+      impersonated(new Date());
+      const res = await fetch(`${baseUrl}/api/t/private`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer token' },
+      });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        code: 'impersonation_read_only',
+      });
+    });
+
+    it('end 30 minutes after sign-in, even with a fresh ID token', async () => {
+      impersonated(new Date(Date.now() - 31 * 60_000));
+      expect((await get('/t/private', 'token')).status).toBe(401);
+    });
+
+    it('end 30 minutes after minting, even when signed in late', async () => {
+      impersonated(new Date(), new Date(Date.now() - 31 * 60_000));
+      expect((await get('/t/private', 'token')).status).toBe(401);
+    });
+
+    it('need the minting time', async () => {
+      impersonated(new Date(), null);
+      expect((await get('/t/private', 'token')).status).toBe(401);
+    });
+
+    it('are never admin, even if the target was promoted meanwhile', async () => {
+      impersonated(new Date(), new Date(), 'admin');
+      expect((await get('/t/admin', 'token')).status).toBe(403);
+      expect(await (await get('/t/private', 'token')).json()).toMatchObject({
+        role: 'user',
+      });
+    });
+
+    it('a normal session can write', async () => {
+      identity.verifyIdToken.mockResolvedValue({
+        uid: 'u1',
+        emailVerified: true,
+        issuedAt: new Date(),
+        authTime: new Date(0),
+        impersonatedBy: null,
+        impersonatedAt: null,
+      });
+      const res = await fetch(`${baseUrl}/api/t/private`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer token' },
+      });
+      expect(res.status).toBe(201);
+    });
   });
 
   it('fails closed for @Roles on a @Public route', async () => {

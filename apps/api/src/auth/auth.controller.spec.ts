@@ -48,6 +48,7 @@ describe('GET /api/auth/me', () => {
         }),
         createIfAbsent: vi.fn(),
         setRole: vi.fn(),
+        setEmail: vi.fn(),
       })
       .overrideProvider(WorkspacesRepository)
       .useValue({ getPlan: vi.fn().mockResolvedValue(null) })
@@ -80,6 +81,7 @@ describe('GET /api/auth/me', () => {
       photoURL: null,
       role: 'admin',
       plan: 'free',
+      impersonatedBy: null,
     });
   });
 });

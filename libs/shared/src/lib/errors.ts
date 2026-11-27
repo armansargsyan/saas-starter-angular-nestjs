@@ -27,6 +27,10 @@ export const API_ERROR_CODES = [
   'email_not_verified',
   /** 409: already a member of this team. */
   'already_member',
+  /** 403: impersonated sessions are read-only. */
+  'impersonation_read_only',
+  /** 403: admins can't be banned or impersonated (and you can't target yourself). */
+  'admin_protected',
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 

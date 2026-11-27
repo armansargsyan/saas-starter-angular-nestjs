@@ -18,7 +18,12 @@ const stored: UserProfile = {
 
 describe('AuthService.me', () => {
   const identity = { verifyIdToken: vi.fn(), getUser: vi.fn() };
-  const users = { get: vi.fn(), createIfAbsent: vi.fn(), setRole: vi.fn() };
+  const users = {
+    get: vi.fn(),
+    createIfAbsent: vi.fn(),
+    setRole: vi.fn(),
+    setEmail: vi.fn(),
+  };
   const caller = (overrides: Partial<AuthUser> = {}): AuthUser => ({
     uid: 'u1',
     email: null,
@@ -53,10 +58,12 @@ describe('AuthService.me', () => {
       photoURL: null,
       role: 'user',
       plan: 'free',
+      impersonatedBy: null,
     });
     expect(identity.getUser).not.toHaveBeenCalled();
     expect(users.createIfAbsent).not.toHaveBeenCalled();
     expect(users.setRole).not.toHaveBeenCalled();
+    expect(users.setEmail).not.toHaveBeenCalled();
   });
 
   it("prefers the token's email over the stored one", async () => {
@@ -139,6 +146,55 @@ describe('AuthService.me', () => {
     users.setRole.mockRejectedValue(new Error('unavailable'));
 
     await expect(service.me(caller())).resolves.toMatchObject({ role: 'user' });
+  });
+
+  it('stores the email lowercased on first sign-in', async () => {
+    users.get.mockResolvedValue(null);
+    identity.getUser.mockResolvedValue({
+      uid: 'u1',
+      email: 'Ada@Example.COM',
+      displayName: null,
+      photoURL: null,
+    });
+    users.createIfAbsent.mockImplementation(async (p: UserProfile) => p);
+
+    await service.me(caller());
+
+    expect(users.createIfAbsent).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'ada@example.com' }),
+    );
+  });
+
+  it('re-syncs a stale or mixed-case stored email from the token', async () => {
+    users.get.mockResolvedValue({ ...stored, email: 'Old@Example.com' });
+
+    await service.me(caller({ email: 'New@Example.com' }));
+
+    expect(users.setEmail).toHaveBeenCalledWith('u1', 'new@example.com');
+  });
+
+  it('leaves a matching email alone', async () => {
+    users.get.mockResolvedValue(stored);
+    await service.me(caller({ email: 'A@example.com' }));
+    expect(users.setEmail).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing in an impersonated session', async () => {
+    users.get.mockResolvedValue(null);
+    identity.getUser.mockResolvedValue({
+      uid: 'u1',
+      email: 'a@example.com',
+      displayName: 'Ada',
+      photoURL: null,
+    });
+
+    const me = await service.me(
+      caller({ impersonatedBy: 'admin-1', role: 'user' }),
+    );
+
+    expect(me).toMatchObject({ displayName: 'Ada', impersonatedBy: 'admin-1' });
+    expect(users.createIfAbsent).not.toHaveBeenCalled();
+    expect(users.setRole).not.toHaveBeenCalled();
   });
 
   it('reports the effective plan of the personal workspace', async () => {

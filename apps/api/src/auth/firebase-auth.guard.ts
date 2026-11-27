@@ -1,9 +1,14 @@
 import {
   type CanActivate,
   type ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import {
+  type ApiErrorBody,
+  IMPERSONATION_MAX_MINUTES,
+} from '@saas-starter/shared';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IdentityProvider } from '../firebase/identity.provider';
@@ -11,6 +16,8 @@ import { type AuthenticatedRequest, roleFromClaim } from './auth-user';
 import { IS_PUBLIC_KEY } from './decorators';
 
 const BEARER = /^Bearer\s+(\S+)$/i;
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const IMPERSONATION_MAX_MS = IMPERSONATION_MAX_MINUTES * 60_000;
 
 /**
  * Global guard: every route needs a valid Firebase ID token unless it is
@@ -46,12 +53,43 @@ export class FirebaseAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
+    // Only a non-empty admin uid marks impersonation.
+    const impersonatedBy =
+      typeof verified.impersonatedBy === 'string' && verified.impersonatedBy
+        ? verified.impersonatedBy
+        : null;
+    const impersonating = impersonatedBy !== null;
+    if (impersonating) {
+      // Custom-token sessions can be refreshed indefinitely, and a custom
+      // token can be redeemed up to an hour after minting: the window runs
+      // from minting *and* from sign-in, whichever ends first. No writes.
+      const now = Date.now();
+      const mintedAt = verified.impersonatedAt?.getTime();
+      if (
+        mintedAt === undefined ||
+        now - mintedAt > IMPERSONATION_MAX_MS ||
+        now - verified.authTime.getTime() > IMPERSONATION_MAX_MS
+      ) {
+        throw new UnauthorizedException('Impersonation session expired');
+      }
+      if (!SAFE_METHODS.has(request.method)) {
+        const body: ApiErrorBody<'impersonation_read_only'> = {
+          statusCode: 403,
+          code: 'impersonation_read_only',
+          message: 'Impersonated sessions are read-only',
+        };
+        throw new ForbiddenException(body);
+      }
+    }
+
     request.user = {
       uid: verified.uid,
       email: verified.email ?? null,
       emailVerified: verified.emailVerified,
-      role: roleFromClaim(verified.role),
+      // Never admin while impersonated, even if the target was promoted since.
+      role: impersonating ? 'user' : roleFromClaim(verified.role),
       tokenIssuedAt: verified.issuedAt,
+      ...(impersonatedBy !== null && { impersonatedBy }),
     };
     return true;
   }
