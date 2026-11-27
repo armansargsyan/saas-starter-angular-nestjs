@@ -21,6 +21,7 @@ Requires Node 24.
 
 ```sh
 npm ci
+cp .env.example .env                   # fill in; the api refuses to boot on invalid config
 npm start                              # api on :3000, web on :4200 (proxies /api)
 npx nx run-many -t lint test build     # all checks
 ```
