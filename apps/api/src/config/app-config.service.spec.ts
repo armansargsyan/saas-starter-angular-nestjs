@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 const env = {
   NODE_ENV: 'production',
   PORT: '8080',
+  APP_URL: 'https://app.example.com',
   FIREBASE_PROJECT_ID: 'demo-project',
   STRIPE_SECRET_KEY: 'sk_test_' + 'dummy',
   STRIPE_WEBHOOK_SECRET: 'whsec_' + 'dummy',
@@ -34,6 +35,8 @@ describe('AppConfigService', () => {
     const config = await compile();
 
     expect(config.port).toBe(8080);
+    expect(config.appUrl).toBe('https://app.example.com');
+    expect(config.trustProxyHops).toBe(1);
     expect(config.isProduction).toBe(true);
     expect(config.firebase).toEqual({ projectId: 'demo-project' });
     expect(config.stripe).toEqual({

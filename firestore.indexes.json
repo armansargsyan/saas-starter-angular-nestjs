@@ -1,4 +1,41 @@
 {
-  "indexes": [],
-  "fieldOverrides": []
+  "indexes": [
+    {
+      "collectionGroup": "links",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "workspaceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "clicks",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "daily",
+      "fieldPath": "referrers",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "daily",
+      "fieldPath": "countries",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "daily",
+      "fieldPath": "devices",
+      "indexes": []
+    }
+  ]
 }

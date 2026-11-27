@@ -32,6 +32,15 @@ export class AppConfigService {
     return this.get('PORT');
   }
 
+  /** Origin only, e.g. `https://example.web.app` (no trailing slash). */
+  get appUrl(): string {
+    return this.get('APP_URL');
+  }
+
+  get trustProxyHops(): number {
+    return this.get('TRUST_PROXY_HOPS');
+  }
+
   get firebase(): FirebaseConfig {
     return { projectId: this.get('FIREBASE_PROJECT_ID') };
   }

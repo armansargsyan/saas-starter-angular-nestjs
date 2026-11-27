@@ -73,6 +73,13 @@
     },
     "lint": {
       "dependsOn": ["typecheck-scripts"]
+    },
+    "test-firestore": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx -y firebase-tools@14 emulators:exec --only firestore --project demo-links-test \"npx vitest run --config apps/api/vitest.config.mts firestore.spec\"",
+        "cwd": "{workspaceRoot}"
+      }
     }
   }
 }

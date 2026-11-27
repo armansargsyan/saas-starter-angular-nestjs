@@ -3,6 +3,7 @@ import { validateEnv } from './env.schema';
 
 // Obviously fake values, built so they never look like real keys.
 const valid = {
+  APP_URL: 'https://app.example.com',
   FIREBASE_PROJECT_ID: 'demo-project',
   STRIPE_SECRET_KEY: 'sk_test_' + 'dummy',
   STRIPE_WEBHOOK_SECRET: 'whsec_' + 'dummy',
@@ -25,7 +26,19 @@ describe('validateEnv', () => {
       ...valid,
       NODE_ENV: 'development',
       PORT: 3000,
+      TRUST_PROXY_HOPS: 1,
     });
+  });
+
+  it('reduces APP_URL to its origin and rejects non-http URLs', () => {
+    expect(
+      validateEnv({ ...valid, APP_URL: 'https://app.example.com/some/path/' })
+        .APP_URL,
+    ).toBe('https://app.example.com');
+    expect(errorOf({ ...valid, APP_URL: 'ftp://example.com' })).toContain(
+      'APP_URL',
+    );
+    expect(errorOf({ ...valid, APP_URL: 'not a url' })).toContain('APP_URL');
   });
 
   it('coerces PORT from a string', () => {
