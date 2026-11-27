@@ -32,13 +32,11 @@ describe('FirebaseIdentityProvider', () => {
     it.each([undefined, false, 'true'])(
       'treats email_verified=%j as unverified',
       async (emailVerified) => {
-        const verifyIdToken = vi
-          .fn()
-          .mockResolvedValue({
-            uid: 'u1',
-            iat: 0,
-            email_verified: emailVerified,
-          });
+        const verifyIdToken = vi.fn().mockResolvedValue({
+          uid: 'u1',
+          iat: 0,
+          email_verified: emailVerified,
+        });
 
         const token = await provider({ verifyIdToken }).verifyIdToken('tok');
 
