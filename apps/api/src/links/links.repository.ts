@@ -14,6 +14,7 @@ import {
   Timestamp,
 } from 'firebase-admin/firestore';
 import { FIRESTORE } from '../firebase/firebase.tokens';
+import { newPersonalWorkspace } from '../workspaces/workspace-docs';
 import { toWorkspacePlan } from '../workspaces/workspaces.repository';
 import { utcDay } from './click-info';
 
@@ -199,15 +200,7 @@ export class FirestoreLinksRepository extends LinksRepository {
       if (workspace.exists) {
         tx.update(workspaceRef, { linkCount: FieldValue.increment(1) });
       } else if (personalOwnerUid) {
-        tx.create(workspaceRef, {
-          type: 'personal',
-          name: 'Personal',
-          ownerUid: personalOwnerUid,
-          plan: null,
-          linkCount: 1,
-          memberCount: 1,
-          createdAt: FieldValue.serverTimestamp(),
-        });
+        tx.create(workspaceRef, newPersonalWorkspace(personalOwnerUid, 1));
       } else {
         throw new WorkspaceNotFoundError(link.workspaceId);
       }

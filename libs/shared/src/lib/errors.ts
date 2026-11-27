@@ -11,6 +11,12 @@ export const API_ERROR_CODES = [
   'slug_taken',
   /** 400: the target URL points back at this app. */
   'self_link',
+  /** 409: the workspace already has a paid subscription; use the portal. */
+  'already_subscribed',
+  /** 409: no Stripe customer yet (nothing bought), so no portal or invoices. */
+  'no_billing_account',
+  /** 400: the plan doesn't fit the workspace (Pro: personal, Team: team). */
+  'plan_not_available',
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 

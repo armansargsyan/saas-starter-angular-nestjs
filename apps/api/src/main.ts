@@ -5,7 +5,8 @@ import { configureApp, GLOBAL_PREFIX } from './app/configure-app';
 import { AppConfigService } from './config/app-config.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: the Stripe webhook verifies its signature over the exact bytes.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(AppConfigService);
   configureApp(app, { trustProxyHops: config.trustProxyHops });
   const port = config.port;
