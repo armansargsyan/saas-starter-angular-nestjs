@@ -116,4 +116,37 @@ describe('chart helpers', () => {
     ).querySelector<HTMLElement>('[data-testid="tooltip"]');
     expect(parseFloat(tip?.style.left ?? '')).toBe(50);
   });
+
+  it('names another series and unit', async () => {
+    @Component({
+      imports: [ClicksChart],
+      template: `<app-clicks-chart
+        [days]="days"
+        series="Signups"
+        unit="signup"
+      />`,
+    })
+    class SignupsHost {
+      readonly days: DayCount[] = [
+        { date: '2026-06-01', count: 1 },
+        { date: '2026-06-02', count: 2 },
+      ];
+    }
+    const fixture = TestBed.createComponent(SignupsHost);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('svg')?.getAttribute('aria-label')).toBe(
+      'Signups per day, 2 days, 3 signups in total.',
+    );
+    expect(el.querySelector('th:last-child')?.textContent?.trim()).toBe(
+      'Signups',
+    );
+    el.querySelectorAll('[data-testid="bar-hit"]')[0].dispatchEvent(
+      new PointerEvent('pointerenter'),
+    );
+    await fixture.whenStable();
+    expect(el.querySelector('[data-testid="tooltip"]')?.textContent).toContain(
+      '1 signup',
+    );
+  });
 });

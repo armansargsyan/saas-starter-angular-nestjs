@@ -42,6 +42,9 @@
   /* Darker than the default (0.577) so destructive text passes AA on its own
      tint (bg-destructive/10: badges, alert-dialog actions, inline errors). */
   --destructive: oklch(0.53 0.23 27.325);
+  /* Session notices (e.g. impersonation): amber 50 / 950, ~14.5:1 contrast. */
+  --warning: oklch(0.987 0.022 95.277);
+  --warning-foreground: oklch(0.279 0.077 45.635);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.705 0.015 286.067);
@@ -79,6 +82,9 @@
   --accent: oklch(0.274 0.006 286.033);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  /* Amber 950 / 50 in dark mode, same contrast. */
+  --warning: oklch(0.279 0.077 45.635);
+  --warning-foreground: oklch(0.987 0.022 95.277);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.552 0.016 285.938);
@@ -90,6 +96,11 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.552 0.016 285.938);
+}
+
+@theme inline {
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
 }
 
 @layer base {

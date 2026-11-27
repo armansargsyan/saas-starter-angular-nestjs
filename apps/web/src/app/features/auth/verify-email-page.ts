@@ -2,10 +2,12 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  effect,
   inject,
   input,
   OnInit,
   signal,
+  untracked,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
@@ -112,9 +114,17 @@ export class VerifyEmailPage implements OnInit {
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.stopTimer());
+    // An admin viewing as this user has nothing to verify (read-only): leave
+    // as soon as that's known, also when the claims arrive after arrival.
+    effect(() => {
+      if (this.auth.impersonatedBy()) {
+        untracked(() => void this.router.navigateByUrl('/dashboard'));
+      }
+    });
   }
 
   ngOnInit(): void {
+    if (this.auth.impersonatedBy()) return; // the effect redirects
     if (this.sent()) this.startCooldown();
     // Arrival check is silent: the buttons report errors when used.
     void this.refresh().catch(() => undefined);

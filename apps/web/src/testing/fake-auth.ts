@@ -11,8 +11,14 @@ export class FakeAuth {
   readonly ready = computed(() => this.state() !== undefined);
   readonly signedIn = computed(() => !!this.state());
   readonly role = signal<'user' | 'admin'>('user');
-  readonly isAdmin = computed(() => this.signedIn() && this.role() === 'admin');
   readonly impersonatedBy = signal<string | null>(null);
+  readonly impersonationStartedAt = signal<number | null>(null);
+  /** Set false to model a session whose claims aren't read yet. */
+  readonly claimsRead = signal(true);
+  readonly claimsKnown = computed(() => this.signedIn() && this.claimsRead());
+  readonly isAdmin = computed(
+    () => this.signedIn() && this.role() === 'admin' && !this.impersonatedBy(),
+  );
   token: string | null = 'test-token';
 
   readonly signInWithEmail = vi.fn<
@@ -25,6 +31,13 @@ export class FakeAuth {
   );
   readonly signInWithGoogle = vi.fn<() => Promise<void>>(async () =>
     this.signIn(),
+  );
+  /** Like the real one: the new session is impersonated by the previous user. */
+  readonly signInWithCustomToken = vi.fn<(token: string) => Promise<void>>(
+    async () => {
+      this.impersonatedBy.set(this.state()?.uid ?? 'unknown');
+      this.signIn('impersonated');
+    },
   );
   readonly sendPasswordReset = vi.fn<(email: string) => Promise<void>>(
     async () => undefined,
@@ -48,7 +61,9 @@ export class FakeAuth {
   }
 
   async currentRole(): Promise<'user' | 'admin' | null> {
-    return this.state() ? this.role() : null;
+    // Like the real one: never admin while impersonating.
+    if (!this.state()) return null;
+    return this.isAdmin() ? 'admin' : 'user';
   }
 
   signIn(uid = 'u1', overrides: Partial<SessionUser> = {}): void {

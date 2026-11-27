@@ -13,6 +13,7 @@ import {
   Validators,
 } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { IMPERSONATION_MAX_MINUTES } from '@saas-starter/shared';
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmInputImports } from '@spartan-ng/helm/input';
@@ -49,6 +50,9 @@ export class LoginPage {
 
   /** `?redirect=` from the signed-in guard. */
   readonly redirect = input<string>();
+  /** `?reason=` when the app signed the user out (e.g. impersonation ended). */
+  readonly reason = input<string>();
+  protected readonly maxMinutes = IMPERSONATION_MAX_MINUTES;
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     email: ['', [Validators.required, Validators.email]],

@@ -27,6 +27,8 @@ export function authErrorMessage(err: unknown): string | null {
       return 'Sign-in isn’t enabled for this site’s domain yet (Firebase Auth → authorized domains).';
     case 'auth/operation-not-allowed':
       return 'This sign-in method isn’t enabled yet (Firebase Auth → sign-in providers).';
+    case 'app/impersonation-read-only':
+      return 'Not available while viewing as another user (read-only).';
     case 'auth/popup-closed-by-user':
     case 'auth/cancelled-popup-request':
       return null; // The user changed their mind.
