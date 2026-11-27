@@ -50,6 +50,29 @@
           "buildTarget": "api:build:production"
         }
       }
+    },
+    "grant-admin": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --env-file-if-exists=.env apps/api/scripts/grant-admin.mts",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "typecheck-scripts": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/scripts/**/*",
+        "{projectRoot}/tsconfig*.json",
+        "{workspaceRoot}/tsconfig.base.json"
+      ],
+      "options": {
+        "command": "tsc -p apps/api/tsconfig.scripts.json",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "lint": {
+      "dependsOn": ["typecheck-scripts"]
     }
   }
 }
