@@ -1,0 +1,10 @@
+{
+  "name": "native-select",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/ui/native-select/src",
+  "prefix": "hlm",
+  "projectType": "library",
+  "tags": ["scope:web", "type:ui"],
+  "// targets": "to see all targets run: nx show project native-select --web",
+  "targets": {}
+}
