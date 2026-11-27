@@ -1,0 +1,429 @@
+<!-- No grid gap: the (empty) live regions mustn't add space; blocks space themselves. -->
+<div class="grid">
+  <a
+    routerLink="/teams"
+    class="text-muted-foreground hover:text-foreground flex w-fit items-center gap-1 text-sm"
+  >
+    <ng-icon name="lucideArrowLeft" aria-hidden="true" />
+    All teams
+  </a>
+
+  <p role="status" class="sr-only" data-testid="announcement">
+    {{ announcement() }}
+  </p>
+  <div role="alert" class="not-empty:mt-6">
+    @if (notice()) {
+    <div
+      hlmAlert
+      variant="destructive"
+      class="flex items-start gap-2"
+      data-testid="notice"
+    >
+      <p hlmAlertDescription class="flex-1">{{ notice() }}</p>
+      <button
+        hlmBtn
+        variant="ghost"
+        size="icon-xs"
+        type="button"
+        aria-label="Dismiss"
+        (click)="notice.set(null)"
+      >
+        <ng-icon name="lucideX" aria-hidden="true" />
+      </button>
+    </div>
+    }
+  </div>
+
+  @if (notFound()) {
+  <div class="mt-6" data-testid="not-found">
+    <h1 class="text-2xl font-semibold tracking-tight">Team not found</h1>
+    <p class="text-muted-foreground mt-2">
+      It doesn’t exist, or you’re not a member.
+    </p>
+  </div>
+  } @else if (team.error()) {
+  <div hlmCard class="mt-6 text-center" role="alert" data-testid="load-error">
+    <p hlmCardContent>
+      Couldn’t load this team.
+      <button hlmBtn variant="link" type="button" (click)="team.reload()">
+        Try again
+      </button>
+    </p>
+  </div>
+  } @else if (teamValue(); as t) {
+  <div class="mt-6 flex flex-wrap items-center gap-3">
+    @if (renaming()) {
+    <form
+      class="flex flex-1 flex-wrap items-center gap-2"
+      (submit)="rename($event)"
+    >
+      <label for="team-rename" class="sr-only">Team name</label>
+      <input
+        hlmInput
+        id="team-rename"
+        class="max-w-xs"
+        maxlength="60"
+        [value]="newName()"
+        (input)="onInput('name', $event)"
+        data-testid="rename-input"
+      />
+      <button
+        hlmBtn
+        type="submit"
+        size="sm"
+        [attr.aria-busy]="busy() === 'rename'"
+        data-testid="rename-save"
+      >
+        Save
+      </button>
+      <button
+        hlmBtn
+        type="button"
+        size="sm"
+        variant="ghost"
+        (click)="renaming.set(false)"
+      >
+        Cancel
+      </button>
+    </form>
+    } @else {
+    <h1
+      tabindex="-1"
+      class="text-2xl font-semibold tracking-tight outline-none"
+      data-testid="team-name"
+    >
+      {{ t.name }}
+    </h1>
+    <span hlmBadge variant="secondary" data-testid="my-role"
+      >You’re {{ roleLabels[t.role].toLowerCase() }}</span
+    >
+    @if (can('renameTeam')) {
+    <button
+      hlmBtn
+      variant="ghost"
+      size="sm"
+      type="button"
+      (click)="startRename()"
+      data-testid="rename"
+    >
+      Rename
+    </button>
+    } }
+    <div class="ml-auto">
+      @if (isCurrent()) {
+      <span class="text-muted-foreground text-sm" data-testid="current"
+        >Current workspace</span
+      >
+      } @else {
+      <button
+        hlmBtn
+        variant="outline"
+        size="sm"
+        type="button"
+        (click)="use()"
+        data-testid="use-team"
+      >
+        Switch to this team
+      </button>
+      }
+    </div>
+  </div>
+
+  <p class="text-muted-foreground mt-2 text-sm" data-testid="seats">
+    {{ plan().name }} plan · @if (seatLimit() !== null) { {{ t.memberCount }} of
+    {{ seatLimit() }} seat{{ seatLimit() === 1 ? '' : 's' }} used } @else { {{
+    t.memberCount }} members }
+  </p>
+
+  @if (seatsFull() && can('inviteMembers')) {
+  <div hlmAlert class="mt-6" data-testid="seats-full">
+    @if (t.plan === 'free') {
+    <p hlmAlertTitle>Upgrade to Team to invite people</p>
+    <p hlmAlertDescription>
+      The Free plan has one seat. Team is ${{ teamPlan.priceMonthlyUsd }}/month
+      for up to {{ teamPlan.limits.members }} members.
+    </p>
+    } @else {
+    <p hlmAlertTitle>All seats are taken</p>
+    <p hlmAlertDescription>Remove a member before inviting someone new.</p>
+    } @if (t.plan === 'free') { @if (can('manageBilling')) {
+    <button
+      hlmBtn
+      size="sm"
+      type="button"
+      class="mt-3 w-fit"
+      (click)="upgrade()"
+      data-testid="upgrade"
+    >
+      Upgrade to Team
+    </button>
+    } @else {
+    <p hlmAlertDescription class="mt-1">Ask the team owner to upgrade.</p>
+    } }
+  </div>
+  }
+
+  <section aria-labelledby="members-title" class="mt-6 grid gap-3">
+    <h2 id="members-title" class="text-lg font-semibold">Members</h2>
+    @if (members.error()) {
+    <p class="text-muted-foreground text-sm" role="alert">
+      Couldn’t load the members.
+      <button
+        hlmBtn
+        variant="link"
+        type="button"
+        class="h-auto p-0"
+        (click)="members.reload()"
+      >
+        Try again
+      </button>
+    </p>
+    } @else if (!members.hasValue()) {
+    <hlm-skeleton class="h-24 w-full" aria-hidden="true" />
+    } @else {
+    <ul
+      role="list"
+      class="divide-y rounded-xl border"
+      data-testid="member-list"
+    >
+      @for (member of memberList(); track member.uid) {
+      <li
+        class="flex flex-wrap items-center gap-3 p-4"
+        [attr.data-member]="member.uid"
+      >
+        <div class="min-w-0 flex-1">
+          <p class="truncate font-medium">
+            {{ member.email ?? 'Unknown user' }} @if (member.uid === me()) {
+            <span class="text-muted-foreground font-normal">(you)</span>
+            }
+          </p>
+          <p class="text-muted-foreground text-sm">
+            Joined {{ member.joinedAt | date: 'mediumDate' }}
+          </p>
+        </div>
+        @if (canChangeRole(member)) {
+        <label [for]="'role-' + member.uid" class="sr-only"
+          >Role of {{ member.email }}</label
+        >
+        <hlm-native-select
+          #roleSelect="hlmNativeSelect"
+          [selectId]="'role-' + member.uid"
+          size="sm"
+          [value]="member.role"
+          [disabled]="busy() !== null"
+          (valueChange)="setRole(member, $event, roleSelect)"
+          data-testid="role-select"
+        >
+          <option hlmNativeSelectOption value="admin">Admin</option>
+          <option hlmNativeSelectOption value="member">Member</option>
+        </hlm-native-select>
+        } @else {
+        <span hlmBadge variant="outline" data-testid="role"
+          >{{ roleLabels[member.role] }}</span
+        >
+        } @if (canRemove(member) || canLeave(member)) {
+        <hlm-alert-dialog>
+          <button
+            hlmAlertDialogTrigger
+            hlmBtn
+            variant="ghost"
+            size="sm"
+            type="button"
+            [attr.aria-label]="canLeave(member) ? 'Leave team' : 'Remove ' + (member.email ?? 'member')"
+            [attr.data-testid]="canLeave(member) ? 'leave' : 'remove'"
+          >
+            {{ canLeave(member) ? 'Leave' : 'Remove' }}
+          </button>
+          <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx" size="sm">
+            <hlm-alert-dialog-header>
+              <h2 hlmAlertDialogTitle>
+                {{ canLeave(member) ? 'Leave ' + t.name + '?' : 'Remove ' +
+                (member.email ?? 'this member') + '?' }}
+              </h2>
+              <p hlmAlertDialogDescription>
+                @if (canLeave(member)) { You lose access to the team’s links and
+                analytics. You’ll need a new invite to come back. } @else { They
+                lose access to the team’s links and analytics. Links they
+                created stay with the team. }
+              </p>
+            </hlm-alert-dialog-header>
+            <hlm-alert-dialog-footer>
+              <button hlmAlertDialogCancel>Cancel</button>
+              <button
+                hlmAlertDialogAction
+                variant="destructive"
+                [attr.aria-busy]="busy() === member.uid"
+                (click)="remove(member, ctx.close)"
+                data-testid="confirm-remove"
+              >
+                {{ canLeave(member) ? 'Leave team' : 'Remove' }}
+              </button>
+            </hlm-alert-dialog-footer>
+          </hlm-alert-dialog-content>
+        </hlm-alert-dialog>
+        }
+      </li>
+      }
+    </ul>
+    }
+  </section>
+
+  @if (can('inviteMembers') && (!seatsFull() || pendingInvites().length ||
+  link())) {
+  <section aria-labelledby="invite-title" class="mt-8 grid gap-3">
+    <h2 id="invite-title" class="text-lg font-semibold">Invite people</h2>
+    @if (!seatsFull()) {
+    <form class="grid gap-2" (submit)="sendInvite($event)" novalidate>
+      <div class="flex flex-wrap items-end gap-2">
+        <div class="grid flex-1 gap-1.5">
+          <label for="invite-email" class="text-sm font-medium">Email</label>
+          <input
+            hlmInput
+            id="invite-email"
+            type="email"
+            autocomplete="off"
+            [value]="inviteEmail()"
+            (input)="onInput('email', $event)"
+            [attr.aria-invalid]="inviteError() ? 'true' : null"
+            [attr.aria-describedby]="inviteError() ? 'invite-error' : null"
+            data-testid="invite-email"
+          />
+        </div>
+        <div class="grid gap-1.5">
+          <label for="invite-role" class="text-sm font-medium">Role</label>
+          <hlm-native-select
+            selectId="invite-role"
+            [value]="inviteRole()"
+            (valueChange)="onInviteRole($event)"
+            data-testid="invite-role"
+          >
+            <option hlmNativeSelectOption value="member">Member</option>
+            @if (can('inviteAdmins')) {
+            <option hlmNativeSelectOption value="admin">Admin</option>
+            }
+          </hlm-native-select>
+        </div>
+        <button
+          hlmBtn
+          type="submit"
+          [attr.aria-busy]="busy()?.startsWith('invite:')"
+          data-testid="send-invite"
+        >
+          Create invite
+        </button>
+      </div>
+      @if (inviteError()) {
+      <p id="invite-error" class="text-destructive text-sm" role="alert">
+        {{ inviteError() }}
+      </p>
+      }
+    </form>
+    } @if (link(); as l) {
+    <div hlmAlert data-testid="invite-link-box">
+      <p hlmAlertTitle>Share this link with {{ l.email }}</p>
+      <p hlmAlertDescription>
+        Emails aren’t sent yet, so copy the link and send it yourself. It works
+        once, only for that address, and expires in 7 days.
+      </p>
+      <div class="mt-3 flex gap-2">
+        <label for="invite-link" class="sr-only">Invite link</label>
+        <input
+          hlmInput
+          id="invite-link"
+          readonly
+          class="flex-1 font-mono text-xs"
+          [value]="l.url"
+          data-testid="invite-link"
+        />
+        <button
+          hlmBtn
+          variant="outline"
+          type="button"
+          (click)="copyLink()"
+          data-testid="copy-link"
+        >
+          <ng-icon name="lucideCopy" aria-hidden="true" />
+          Copy
+        </button>
+      </div>
+    </div>
+    }
+
+    <h3 class="mt-2 text-sm font-medium">Pending invites</h3>
+    @if (invites.error()) {
+    <p class="text-muted-foreground text-sm" role="alert">
+      Couldn’t load the invites.
+      <button
+        hlmBtn
+        variant="link"
+        type="button"
+        class="h-auto p-0"
+        (click)="invites.reload()"
+      >
+        Try again
+      </button>
+    </p>
+    } @else if (pendingInvites().length === 0) {
+    <p class="text-muted-foreground text-sm" data-testid="no-invites">
+      No pending invites.
+    </p>
+    } @else {
+    <ul
+      role="list"
+      class="divide-y rounded-xl border"
+      data-testid="invite-list"
+    >
+      @for (invite of pendingInvites(); track invite.id) {
+      <li
+        class="flex flex-wrap items-center gap-3 p-4"
+        [attr.data-invite]="invite.email"
+      >
+        <div class="min-w-0 flex-1">
+          <p class="truncate font-medium">{{ invite.email }}</p>
+          <p class="text-muted-foreground text-sm">
+            {{ roleLabels[invite.role] }} · @if (invite.expired) {
+            <span class="text-destructive">Expired</span>
+            } @else { Expires {{ invite.expiresAt | date: 'mediumDate' }} }
+          </p>
+        </div>
+        @if (!seatsFull() && (invite.role === 'member' || can('inviteAdmins')))
+        {
+        <button
+          hlmBtn
+          variant="outline"
+          size="sm"
+          type="button"
+          [attr.aria-busy]="busy() === 'invite:' + invite.email"
+          [attr.aria-label]="'New link for ' + invite.email"
+          (click)="resend(invite)"
+          data-testid="resend"
+        >
+          New link
+        </button>
+        }
+        <button
+          hlmBtn
+          variant="ghost"
+          size="sm"
+          type="button"
+          [attr.aria-busy]="busy() === invite.id"
+          [attr.aria-label]="'Revoke invite for ' + invite.email"
+          (click)="revoke(invite)"
+          data-testid="revoke"
+        >
+          Revoke
+        </button>
+      </li>
+      }
+    </ul>
+    }
+  </section>
+  } } @else {
+  <hlm-skeleton
+    class="mt-6 h-8 w-64"
+    aria-hidden="true"
+    data-testid="loading"
+  />
+  <hlm-skeleton class="mt-6 h-40 w-full" aria-hidden="true" />
+  }
+</div>

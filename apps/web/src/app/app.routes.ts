@@ -40,6 +40,13 @@ export const appRoutes: Route[] = [
         (m) => m.VerifyEmailPage,
       ),
   },
+  // Open to everyone: the token arrives in the fragment before sign-in.
+  {
+    path: 'invite',
+    title: 'Join a team · SaaS Starter',
+    loadComponent: () =>
+      import('./features/teams/invite-page').then((m) => m.InvitePage),
+  },
   // The signed-in app, inside the shell (nav, banners).
   {
     path: '',

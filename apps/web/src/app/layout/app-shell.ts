@@ -8,6 +8,8 @@ import {
 import { HlmAlertImports } from '@spartan-ng/helm/alert';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { AuthService } from '../core/auth.service';
+import { WorkspaceService } from '../core/workspace.service';
+import { WorkspaceSwitcher } from './workspace-switcher';
 
 /** Layout of the signed-in area: nav, account actions, session banners. */
 @Component({
@@ -18,6 +20,7 @@ import { AuthService } from '../core/auth.service';
     RouterLinkActive,
     HlmAlertImports,
     HlmButtonImports,
+    WorkspaceSwitcher,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -62,6 +65,7 @@ import { AuthService } from '../core/auth.service';
           }
         </nav>
         <div class="ml-auto flex items-center gap-3 text-sm">
+          <app-workspace-switcher class="hidden sm:block" />
           <span
             class="text-muted-foreground hidden max-w-48 truncate md:inline"
             data-testid="account-email"
@@ -79,6 +83,12 @@ import { AuthService } from '../core/auth.service';
           </button>
         </div>
       </div>
+      @if (workspaces.teams().length) {
+        <!-- Narrow screens: the switcher gets its own row. -->
+        <div class="border-t px-4 py-2 sm:hidden">
+          <app-workspace-switcher selectId="workspace-switcher-narrow" />
+        </div>
+      }
     </header>
 
     @if (auth.impersonatedBy()) {
@@ -125,6 +135,7 @@ import { AuthService } from '../core/auth.service';
 })
 export class AppShell {
   protected readonly auth = inject(AuthService);
+  protected readonly workspaces = inject(WorkspaceService);
   private readonly router = inject(Router);
 
   protected readonly nav = [

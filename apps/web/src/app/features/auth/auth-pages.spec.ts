@@ -40,6 +40,7 @@ describe('auth pages', () => {
             { path: 'verify-email', component: VerifyEmailPage },
             { path: 'dashboard', component: DashboardStub },
             { path: 'teams', children: [] },
+            { path: 'invite', children: [] },
             { path: 'links/:code', children: [] },
             { path: '', children: [] },
           ],
@@ -305,6 +306,21 @@ describe('auth pages', () => {
       });
       await click('check');
       expect(router.url).toBe('/dashboard');
+    });
+
+    it('goes back to a pending invite once verified', async () => {
+      window.sessionStorage.setItem('saas-starter.invite-token', 'tok');
+      auth.reloadUser.mockImplementationOnce(async () => {
+        auth.signIn('u1', { emailVerified: true, providers: ['password'] });
+        return auth.user() ?? null;
+      });
+      await harness.navigateByUrl('/verify-email');
+      expect(q('[data-testid="invite-hint"]')?.textContent).toContain(
+        'come back here',
+      );
+      await settle();
+      expect(router.url).toBe('/invite');
+      window.sessionStorage.clear();
     });
 
     it('lets a later visit resend right away, once per click burst', async () => {

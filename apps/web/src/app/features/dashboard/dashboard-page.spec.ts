@@ -1,3 +1,4 @@
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import {
@@ -15,6 +16,7 @@ import { FakeAuth } from '../../../testing/fake-auth';
 import { settle } from '../../../testing/settle';
 import { AuthService } from '../../core/auth.service';
 import { BillingService } from '../../core/billing.service';
+import { WorkspaceService } from '../../core/workspace.service';
 import { DashboardPage } from './dashboard-page';
 
 const link = (code: string, overrides: Partial<Link> = {}): Link => ({
@@ -41,10 +43,12 @@ describe('DashboardPage', () => {
   let auth: FakeAuth;
   let http: HttpTestingController;
   let billing: { startCheckout: ReturnType<typeof vi.fn> };
+  const workspaceId = signal<string | null>('u1');
 
   beforeEach(() => {
     auth = new FakeAuth();
     auth.signIn('u1');
+    workspaceId.set('u1');
     billing = { startCheckout: vi.fn().mockResolvedValue({ ok: true }) };
     TestBed.configureTestingModule({
       imports: [DashboardPage],
@@ -54,6 +58,13 @@ describe('DashboardPage', () => {
         provideHttpClientTesting(),
         { provide: AuthService, useValue: auth },
         { provide: BillingService, useValue: billing },
+        {
+          provide: WorkspaceService,
+          useValue: {
+            workspaceId,
+            isPersonal: computed(() => workspaceId() === 'u1'),
+          },
+        },
         { provide: OVERLAY_DEFAULT_CONFIG, useValue: { usePopover: false } },
       ],
     });
@@ -355,6 +366,15 @@ describe('DashboardPage', () => {
     expect(q('[data-testid="load-more"]')).toBeNull();
   });
 
+  it('shows the loading state (not "No links yet") until the workspace is known', async () => {
+    workspaceId.set(null);
+    const fixture = TestBed.createComponent(DashboardPage);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="loading"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="empty"]')).toBeNull();
+  });
+
   describe('errors and read-only', () => {
     const fail = { status: 500, statusText: 'Server Error' };
 
@@ -423,7 +443,7 @@ describe('DashboardPage', () => {
         2,
       );
 
-      auth.signIn('u2'); // the workspace is now u2's
+      workspaceId.set('u2'); // switched workspace
       TestBed.tick();
       http.expectOne('/api/workspaces/u2/links?limit=50').flush({
         items: [link('b1', { workspaceId: 'u2' })],

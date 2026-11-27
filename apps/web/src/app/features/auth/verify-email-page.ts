@@ -12,6 +12,7 @@ import { HlmAlertImports } from '@spartan-ng/helm/alert';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { authErrorMessage } from '../../core/auth-errors';
 import { AuthService } from '../../core/auth.service';
+import { PendingInvite } from '../../core/pending-invite';
 import { AuthCard } from './auth-card';
 
 /** Seconds before "Resend" works again (Firebase also rate limits). */
@@ -41,6 +42,12 @@ export const RESEND_COOLDOWN_S = 30;
           we emailed you. Need a new one? Send it again below.
         }
       </p>
+      @if (invitePending) {
+        <p class="text-muted-foreground mt-2 text-sm" data-testid="invite-hint">
+          Your team invite is waiting in this tab: after opening the link in the
+          email, come back here.
+        </p>
+      }
       <div role="status" class="mt-4 min-h-5 text-sm" data-testid="status">
         {{ status() }}
       </div>
@@ -89,6 +96,8 @@ export const RESEND_COOLDOWN_S = 30;
 export class VerifyEmailPage implements OnInit {
   protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly pendingInvite = inject(PendingInvite);
+  protected readonly invitePending = this.pendingInvite.get() !== null;
 
   /** `?sent=1` right after sign-up: the email went out a moment ago. */
   readonly sent = input(false, {
@@ -145,7 +154,10 @@ export class VerifyEmailPage implements OnInit {
   private async refresh(): Promise<boolean> {
     const user = await this.auth.reloadUser();
     if (user?.emailVerified) {
-      await this.router.navigateByUrl('/dashboard');
+      // Verifying on the way to an invite: go back to it.
+      await this.router.navigateByUrl(
+        this.pendingInvite.get() ? '/invite' : '/dashboard',
+      );
       return true;
     }
     return false;
