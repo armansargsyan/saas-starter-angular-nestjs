@@ -1,13 +1,17 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { PLANS } from '@saas-starter/shared';
 import type {
+  ApiErrorBody,
   Link,
+  PlanLimitErrorBody,
   LinkListResponse,
   LinkStatsResponse,
   createLinkSchema,
@@ -27,6 +31,7 @@ import {
   CodeTakenError,
   LinksRepository,
   type NewLink,
+  PlanLimitError,
   type StoredLink,
   WorkspaceNotFoundError,
 } from './links.repository';
@@ -82,11 +87,12 @@ export class LinksService {
         personalOwner,
       );
       if (!link) {
-        throw new ConflictException({
+        const body: ApiErrorBody<'slug_taken'> = {
           statusCode: 409,
           code: 'slug_taken',
           message: 'That short code is already taken',
-        });
+        };
+        throw new ConflictException(body);
       }
       return this.toLink(link);
     }
@@ -111,6 +117,17 @@ export class LinksService {
       return await this.links.create(link, personalOwner);
     } catch (err) {
       if (err instanceof CodeTakenError) return null;
+      if (err instanceof PlanLimitError) {
+        const body: PlanLimitErrorBody = {
+          statusCode: 403,
+          code: 'plan_limit_reached',
+          message: `Your ${PLANS[err.plan].name} plan allows ${err.limit} links. Upgrade or delete some to add more.`,
+          resource: 'links',
+          limit: err.limit,
+          plan: err.plan,
+        };
+        throw new ForbiddenException(body);
+      }
       // A team the caller belongs to, whose workspace doc is gone.
       if (err instanceof WorkspaceNotFoundError) {
         throw new NotFoundException('Workspace not found');
@@ -270,11 +287,12 @@ export class LinksService {
       (target === 'run.app' || target.endsWith('.run.app')) &&
       url.pathname.toLowerCase().startsWith('/r/');
     if (isOwnHost || isCloudRunShortLink) {
-      throw new BadRequestException({
+      const body: ApiErrorBody<'self_link'> = {
         statusCode: 400,
         code: 'self_link',
         message: 'Links to this site are not allowed',
-      });
+      };
+      throw new BadRequestException(body);
     }
   }
 

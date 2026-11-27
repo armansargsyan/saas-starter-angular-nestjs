@@ -1,6 +1,8 @@
+import { hasRoomFor, type PlanId, PLANS } from '@saas-starter/shared';
 import {
   type Click,
   CodeTakenError,
+  PlanLimitError,
   type DailyStats,
   LinksRepository,
   type NewLink,
@@ -17,6 +19,8 @@ export class FakeLinksRepository extends LinksRepository {
   readonly taken = new Set<string>();
   /** Codes of deleted links, never reissued (like `retiredCodes`). */
   readonly retired = new Set<string>();
+  /** Effective plan per workspace (default Free), as the real repo derives it. */
+  readonly plans = new Map<string, PlanId>();
   createdAt = new Date('2026-06-01T12:00:00Z');
   failClicks = false;
 
@@ -28,6 +32,14 @@ export class FakeLinksRepository extends LinksRepository {
     ) {
       throw new CodeTakenError(link.code);
     }
+    // Counts actual links, where the real repo uses the stored `linkCount`;
+    // counter correctness is covered by the emulator spec.
+    const plan = this.plans.get(link.workspaceId) ?? 'free';
+    const limit = PLANS[plan].limits.links;
+    const used = [...this.links.values()].filter(
+      (l) => l.workspaceId === link.workspaceId,
+    ).length;
+    if (!hasRoomFor(used, limit)) throw new PlanLimitError(plan, limit ?? 0);
     const stored: StoredLink = {
       ...link,
       createdAt: this.createdAt,

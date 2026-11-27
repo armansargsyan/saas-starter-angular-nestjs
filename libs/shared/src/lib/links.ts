@@ -105,6 +105,11 @@ export const workspaceIdSchema = z
     message: 'is not a valid workspace id',
   });
 
+/** Query of `GET /api/usage`. */
+export const usageQuerySchema = z.strictObject({
+  workspaceId: workspaceIdSchema,
+});
+
 export const LINK_LIST_MAX_LIMIT = 100;
 
 /** Query of `GET /api/workspaces/:workspaceId/links`. */
