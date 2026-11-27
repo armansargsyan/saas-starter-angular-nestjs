@@ -12,6 +12,8 @@ export interface AuthUser {
   role: Role;
   /** When the ID token was issued; its claims reflect that moment. */
   tokenIssuedAt: Date;
+  /** Set when an admin impersonates this user: the session is read-only. */
+  impersonatedBy?: string;
 }
 
 export interface AuthenticatedRequest {

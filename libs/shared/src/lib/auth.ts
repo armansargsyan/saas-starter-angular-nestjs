@@ -12,4 +12,6 @@ export interface MeResponse {
   role: Role;
   /** Effective plan of the caller's personal workspace. */
   plan: PlanId;
+  /** Set when an admin is impersonating this user (read-only session). */
+  impersonatedBy: string | null;
 }

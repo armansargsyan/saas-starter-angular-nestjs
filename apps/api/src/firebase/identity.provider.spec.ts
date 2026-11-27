@@ -14,6 +14,7 @@ describe('FirebaseIdentityProvider', () => {
         email: 'a@example.com',
         email_verified: true,
         iat: 1_780_000_000,
+        auth_time: 1_779_999_000,
         role: 'admin',
       });
 
@@ -25,8 +26,24 @@ describe('FirebaseIdentityProvider', () => {
         email: 'a@example.com',
         emailVerified: true,
         issuedAt: new Date(1_780_000_000 * 1000),
+        authTime: new Date(1_779_999_000 * 1000),
+        impersonatedBy: null,
+        impersonatedAt: null,
         role: 'admin',
       });
+    });
+
+    it('carries the impersonating admin from the custom-token claim', async () => {
+      const verifyIdToken = vi.fn().mockResolvedValue({
+        uid: 'u1',
+        iat: 0,
+        auth_time: 0,
+        impersonatedBy: 'admin-1',
+        impersonatedAt: '1780000000000',
+      });
+      const token = await provider({ verifyIdToken }).verifyIdToken('tok');
+      expect(token.impersonatedBy).toBe('admin-1');
+      expect(token.impersonatedAt).toEqual(new Date(1_780_000_000_000));
     });
 
     it.each([undefined, false, 'true'])(
@@ -56,6 +73,8 @@ describe('FirebaseIdentityProvider', () => {
         email: 'a@example.com',
         displayName: null,
         photoURL: null,
+        disabled: false,
+        role: 'user',
       });
     });
 
@@ -77,6 +96,38 @@ describe('FirebaseIdentityProvider', () => {
         );
 
       await expect(provider({ getUser }).getUser('u1')).rejects.toThrow('down');
+    });
+  });
+});
+
+describe('admin operations', () => {
+  it('bans, revokes sessions and mints impersonation tokens through the Admin SDK', async () => {
+    const auth = {
+      updateUser: vi.fn().mockResolvedValue({}),
+      revokeRefreshTokens: vi.fn().mockResolvedValue(undefined),
+      createCustomToken: vi.fn().mockResolvedValue('custom-token'),
+      getUser: vi.fn().mockResolvedValue({
+        uid: 'u1',
+        disabled: true,
+        customClaims: { role: 'admin' },
+      }),
+    };
+    const p = provider(auth);
+
+    await p.setDisabled('u1', true);
+    await p.revokeSessions('u1');
+    expect(await p.createCustomToken('u1', { impersonatedBy: 'a1' })).toBe(
+      'custom-token',
+    );
+    expect(await p.getUser('u1')).toMatchObject({
+      disabled: true,
+      role: 'admin',
+    });
+
+    expect(auth.updateUser).toHaveBeenCalledWith('u1', { disabled: true });
+    expect(auth.revokeRefreshTokens).toHaveBeenCalledWith('u1');
+    expect(auth.createCustomToken).toHaveBeenCalledWith('u1', {
+      impersonatedBy: 'a1',
     });
   });
 });

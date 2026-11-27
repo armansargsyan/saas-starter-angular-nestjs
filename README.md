@@ -136,6 +136,22 @@ Pay with the test card `4242 4242 4242 4242`, using any future expiry date and a
 
 Non-members get a 404 on every team route. Team links use the same membership check, so removing someone takes away their access at once.
 
+### Admin api
+
+Every route under `/api/admin` needs the `admin` custom claim (`npx nx grant-admin api -- <email>`).
+
+| Endpoint                                   | What it does                                                                                                                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/admin/users?q=&limit=&cursor=`   | Users, searchable by email prefix, with plan, link count and status.                                                                                                                 |
+| `GET /api/admin/users/:uid`                | One user.                                                                                                                                                                            |
+| `POST /api/admin/users/:uid/ban` / `unban` | Disables or re-enables the Firebase user. A ban also revokes their sessions, so the api's revocation check rejects even tokens they still hold.                                      |
+| `POST /api/admin/users/:uid/impersonate`   | Returns `{ customToken, expiresAt }` for `signInWithCustomToken`.                                                                                                                    |
+| `GET /api/admin/stats?days=30`             | MRR per currency (active and past_due subscriptions, normalized to monthly), live subscriptions (active, trialing, past_due) by plan, and signups per day (one count query per day). |
+
+- **Impersonated sessions** carry `impersonatedBy` in the token, which `GET /api/auth/me` shows. They are **read-only** (any write returns `403 impersonation_read_only`), never have admin rights, and end 30 minutes after the token was minted (or after sign-in, if that comes first).
+- **Protected users:** admins can't be banned or impersonated, and neither can you yourself.
+- **Audit log:** every ban, unban and impersonation is written to `auditLog`, first as `pending`, then marked `applied` or `failed`, together with the steps that completed.
+
 ## License
 
 [MIT](LICENSE) © 2026 Arman Sargsyan

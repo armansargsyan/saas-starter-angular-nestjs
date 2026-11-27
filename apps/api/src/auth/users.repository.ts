@@ -26,6 +26,7 @@ export abstract class UsersRepository {
   /** Creates the profile, or returns the existing one if it already exists. */
   abstract createIfAbsent(profile: UserProfile): Promise<UserProfile>;
   abstract setRole(uid: string, role: Role): Promise<void>;
+  abstract setEmail(uid: string, email: string): Promise<void>;
 }
 
 const ALREADY_EXISTS = 6;
@@ -65,6 +66,10 @@ export class FirestoreUsersRepository extends UsersRepository {
 
   async setRole(uid: string, role: Role): Promise<void> {
     await this.db.collection('users').doc(uid).update({ role });
+  }
+
+  async setEmail(uid: string, email: string): Promise<void> {
+    await this.db.collection('users').doc(uid).update({ email });
   }
 }
 
