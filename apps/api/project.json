@@ -5,30 +5,20 @@
   "projectType": "application",
   "tags": ["scope:api", "type:app"],
   "targets": {
-    "prune-lockfile": {
-      "dependsOn": ["build"],
-      "cache": true,
-      "executor": "@nx/js:prune-lockfile",
-      "outputs": [
-        "{workspaceRoot}/dist/apps/api/package.json",
-        "{workspaceRoot}/dist/apps/api/package-lock.json"
-      ],
-      "options": {
-        "buildTarget": "build"
-      }
+    "build": {
+      "outputs": ["{workspaceRoot}/dist/apps/api"]
     },
-    "copy-workspace-modules": {
+    "docker-build": {
       "dependsOn": ["build"],
-      "cache": true,
-      "outputs": ["{workspaceRoot}/dist/apps/api/workspace_modules"],
-      "executor": "@nx/js:copy-workspace-modules",
+      "executor": "nx:run-commands",
+      "metadata": {
+        "description": "Builds the Cloud Run image from dist/apps/api. Its build dependency runs the default configuration, which is production (NODE_ENV=production)."
+      },
       "options": {
-        "buildTarget": "build"
+        "command": "docker build -f apps/api/Dockerfile -t {args.tag} dist/apps/api",
+        "cwd": "{workspaceRoot}",
+        "args": "--tag=saas-starter-api:local"
       }
-    },
-    "prune": {
-      "dependsOn": ["prune-lockfile", "copy-workspace-modules"],
-      "executor": "nx:noop"
     },
     "serve": {
       "continuous": true,

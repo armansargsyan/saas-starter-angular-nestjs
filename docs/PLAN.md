@@ -123,6 +123,17 @@ sequenceDiagram
   - Country comes from an IP-geolocation lookup on the `X-Forwarded-For` client IP, done in memory. The IP itself is never stored.
 - **Rate limits:** per-user limits on creating links, and a per-IP limit on redirects to stop click inflation.
 
+## Deployment
+
+- **One origin:** Firebase Hosting serves the web build and rewrites `/api/**` and `/r/**` to the Cloud Run service. The app, the api and short links share an origin, so there's no CORS, and the webhook URL (`<APP_URL>/api/billing/webhook`) is known before the first deploy.
+- **Image:** the api runs on Cloud Run from a small image built on the webpack output, with production dependencies only and a non-root user. It scales to zero, with a low max-instances cap.
+- **Config:**
+  - The Stripe secret key and webhook secret come from Secret Manager (`--set-secrets`), readable only by the api's own service account.
+  - Everything else is plain env.
+  - Firebase Admin uses that service account's default credentials.
+- **Client IP:** Hosting and Cloud Run's front end each append to `X-Forwarded-For`, so the api trusts two hops (`TRUST_PROXY_HOPS=2`).
+- **How:** `scripts/deploy.sh` (`setup` once, then `deploy`). The README's Deploy section has the steps.
+
 ## Build order
 
 1. **Foundations:** Firebase setup, env config, the auth guard and roles. Then shared plan definitions and the workspace model, and links with their redirect.

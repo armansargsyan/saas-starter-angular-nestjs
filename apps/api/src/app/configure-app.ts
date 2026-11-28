@@ -1,5 +1,6 @@
 import { type INestApplication, RequestMethod } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import type { NextFunction, Request, Response } from 'express';
 
 export const GLOBAL_PREFIX = 'api';
 
@@ -20,4 +21,12 @@ export function configureApp(
   // Trust exactly N hops so `req.ip` is the client, and a client-supplied
   // X-Forwarded-For can't spoof it.
   (app as NestExpressApplication).set('trust proxy', trustProxyHops);
+  // Api responses are per user: never let a CDN (Firebase Hosting) or the
+  // browser cache them. A handler can still set its own Cache-Control.
+  app.use(`/${GLOBAL_PREFIX}`, noStore);
+}
+
+function noStore(_req: Request, res: Response, next: NextFunction): void {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
 }

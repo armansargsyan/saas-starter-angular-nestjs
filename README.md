@@ -172,6 +172,159 @@ Every route under `/api/admin` needs the `admin` custom claim (`npx nx grant-adm
 - **Protected users:** admins can't be banned or impersonated, and neither can you yourself.
 - **Audit log:** every ban, unban and impersonation is written to `auditLog`, first as `pending`, then marked `applied` or `failed`, together with the steps that completed.
 
+## Deploy
+
+The web app goes to **Firebase Hosting** and the api to **Cloud Run**. Hosting serves the Angular build and rewrites `/api/**` and `/r/**` to the Cloud Run service, so the app, the api and short links share one origin (no CORS). `scripts/deploy.sh` does all of it. Every step is idempotent, and `--dry-run` prints the commands without running them.
+
+```
+browser ──► Firebase Hosting ──┬─ static files (dist/apps/web/browser)
+                               └─ /api/**, /r/** ──► Cloud Run "saas-starter-api" (europe-west1)
+                                                      ├─ Firestore, Firebase Auth (service account)
+                                                      └─ Stripe (secrets from Secret Manager)
+```
+
+The Cloud Run service id and region are set once, in the Hosting rewrites in `firebase.json`, and the script reads them from there.
+
+### Prerequisites
+
+- **Firebase project** on the **Blaze** plan. Cloud Run needs billing, though a low-traffic demo should stay within the free tiers (see Costs).
+- **Hosting:** the project's default Hosting site exists. If the first deploy reports there is none, open Hosting in the console and click Get started.
+- **Auth:** the Email/Password and Google providers are enabled under Authentication.
+- **Web app** registered in the project. Hosting then serves its config at `/__/firebase/init.json`, which the web app loads at startup.
+- **CLIs:** `gcloud` (`gcloud auth login`), `firebase` (`firebase login`) and, optionally, the Stripe CLI.
+- **Stripe:** a test-mode account with the Pro and Team prices (see Billing above).
+
+### One-time setup
+
+```sh
+PROJECT_ID=<your-project-id> scripts/deploy.sh setup
+```
+
+Re-running it is safe. It:
+
+- enables the APIs (Cloud Run, Artifact Registry, Cloud Build, Cloud Storage, Secret Manager, IAM, IAM Credentials, Firestore, Hosting, Identity Toolkit)
+- creates the Firestore database in `europe-west1` and an Artifact Registry repository that only keeps recent images
+- creates the runtime service account `saas-starter-api@…` with `roles/datastore.user`, `roles/firebaseauth.admin`, and token-creator rights on itself (`createCustomToken` signs through the IAM Credentials API, as there's no key file)
+- creates a dedicated build service account `saas-starter-build@…`, so images aren't built by the shared Compute Engine default account. It gets only what a build needs:
+  - read access to its own source bucket `gs://<project-id>-build-source` (uploads are deleted after 7 days)
+  - `roles/artifactregistry.writer` on the one repository
+  - `roles/logging.logWriter` (build logs go to Cloud Logging only)
+- creates the secrets `stripe-secret-key` (`sk_test_…`) and `stripe-webhook-secret` (`whsec_…`), and grants read access to them only to the runtime account (project Owners and Secret Manager admins can still read them)
+
+Running setup and deploy needs a project Owner, or equivalent roles, including `iam.serviceAccountUser` on both service accounts so that Cloud Build and Cloud Run can run as them.
+
+The secret values are typed at a hidden prompt and piped to `gcloud` on stdin, so they never show up in arguments, shell history or files. Live keys are refused. You can skip the webhook secret at first and re-run setup once the endpoint exists (see below).
+
+### Deploy
+
+```sh
+PROJECT_ID=<your-project-id> STRIPE_PRICE_PRO=price_… STRIPE_PRICE_TEAM=price_… scripts/deploy.sh deploy
+```
+
+1. **Build:** `nx run-many -t build -p api web`. Both default to production.
+2. **Image:** Cloud Build builds `apps/api/Dockerfile` with `apps/api/cloudbuild.yaml`, as the build service account, and pushes it to Artifact Registry tagged with the git sha (`-dirty` if the tree has changes). `BUILDER=docker` builds and pushes from your machine instead, for `linux/amd64`.
+3. **Cloud Run:**
+   - runs as the runtime service account
+   - plain config in env vars: `APP_URL`, `FIREBASE_PROJECT_ID`, `STRIPE_PRICE_*`, `TRUST_PROXY_HOPS=2`
+   - Stripe keys from Secret Manager with `--set-secrets`
+   - scales from 0 to `MAX_INSTANCES` (default 2)
+4. **Firebase:** Firestore rules and indexes (including the clicks TTL), then Hosting.
+
+`APP_URL` defaults to `https://<project-id>.web.app`. With a custom domain, set `APP_URL=https://<domain>`, add the domain to Authentication → Settings → Authorized domains, and register the webhook for it. `scripts/deploy.sh --help` lists every option.
+
+To build and run the image locally: `npx nx docker-build api`, then `docker run -p 3100:8080 -e PORT=8080 …` with the same variables as `.env`.
+
+### Stripe webhook (test mode)
+
+The endpoint is `https://<project-id>.web.app/api/billing/webhook`, so it can be registered before the first deploy. `scripts/deploy.sh webhook` prints the exact command, filling in the API version from `STRIPE_API_VERSION` in `apps/api/src/billing/stripe.client.ts`:
+
+```sh
+stripe webhook_endpoints create -d "url=https://<project-id>.web.app/api/billing/webhook" \
+  -d "api_version=<STRIPE_API_VERSION>" \
+  -d "enabled_events[]=checkout.session.completed" \
+  -d "enabled_events[]=customer.subscription.created" \
+  -d "enabled_events[]=customer.subscription.updated" \
+  -d "enabled_events[]=customer.subscription.deleted" \
+  -d "enabled_events[]=invoice.paid" \
+  -d "enabled_events[]=invoice.payment_failed"
+```
+
+- **API version:** the endpoint must use the version the api pins, not the account default. The api reads fields that older versions don't send, such as the invoice's `parent.subscription_details`.
+- **Test mode:** the Stripe CLI uses test mode unless given `--live`, which you should never pass.
+- **Dashboard:** the same is Developers → Webhooks → Add endpoint, with test mode on. Pick the same API version there.
+
+Put the endpoint's signing secret into `stripe-webhook-secret` with `scripts/deploy.sh setup`, then deploy again. Secrets are referenced as `:latest` and read when an instance starts, so a deploy rolls every instance onto the new value.
+
+### Client IPs and proxies
+
+Requests reach the api through two proxies: Firebase Hosting, then Cloud Run's front end. Each one appends the address it received the request from to `X-Forwarded-For`, so the api sees `<client>, <hosting>` and trusts exactly two hops (`TRUST_PROXY_HOPS=2`). `req.ip` is then the real client, even if the client sends its own `X-Forwarded-For`. The per-IP click limit, the geoip country and the anonymous rate limits all use it. Called directly on its `*.run.app` URL, Cloud Run is only one hop, and the default of `1` would be right there.
+
+- **Check after the first deploy:**
+  - Call `curl https://<app>/r/<code>` 12 times within a minute, each with a different fake `-H 'X-Forwarded-For: …'`. The link's click count should rise by 10, not 12, because the fake header can't change `req.ip`. (The limit is kept in memory per instance, so this assumes one warm instance.)
+  - Then open the link from another network, for example a phone on mobile data. That click should still count, which shows `req.ip` isn't Hosting's address.
+  - If either check fails, adjust `TRUST_PROXY_HOPS` and deploy again.
+- **Known limit:** Hosting rewrites need the service to allow public calls, so the `*.run.app` URL stays reachable. Through it, a client can spoof `X-Forwarded-For` and get around the per-IP click limit and anonymous rate limits. Signed-in limits are per user, and nothing else trusts the IP.
+
+### Security headers and caching
+
+`firebase.json` sets these headers:
+
+- **Security headers:** HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and a restrictive `Permissions-Policy` everywhere.
+- **Framing:** `X-Frame-Options: DENY` and a CSP limited to `frame-ancestors 'none'; base-uri 'self'; object-src 'none'`, on every path except Firebase's reserved `/__/…`. The Google sign-in popup loads `/__/auth/iframe` from the same Hosting site in a hidden iframe, so framing it must stay allowed. The rule is a regex that skips paths starting with `/__`.
+- **Caching:**
+  - Hashed `*.js`/`*.css` files are cached for a year as `immutable`.
+  - HTML (including SPA routes) is `no-cache`, so a deploy shows up on the next page load.
+  - The api marks every `/api` response `Cache-Control: no-store` itself, and the redirect does the same for `/r/…`.
+  - `firebase.json` repeats `no-store` for `/api/**` and `/r/**`. That keeps the site-wide `no-cache` default from replacing it, in case Hosting applies its headers to rewritten responses.
+
+A full `script-src`/`connect-src` CSP is **deferred**. Firebase Auth's Google popup needs `apis.google.com`, `*.firebaseapp.com`, `identitytoolkit` and `securetoken`, and Angular injects inline styles. Such a policy has to be tested against the deployed app, preferably in `Content-Security-Policy-Report-Only` first.
+
+### Verify
+
+```sh
+curl -fsS https://<project-id>.web.app/api/health          # {"status":"ok",…}
+curl -sI https://<project-id>.web.app/api/health | grep -i cache-control   # no-store
+curl -sI https://<project-id>.web.app/r/does-not-exist     # 404 from the api
+curl -sI https://<project-id>.web.app/dashboard | grep -i x-frame-options  # DENY
+gcloud run services logs read saas-starter-api --region=europe-west1 --project=<project-id> --limit=50
+```
+
+Then check sign-up and log-in with email and with Google. Google uses a popup and a hidden `/__/auth/iframe`, which is the first thing a wrong frame header breaks. Then create a link, open its short URL, and run a test checkout with `4242 4242 4242 4242`. The plan changes once the webhook arrives, which the Stripe Dashboard shows under the endpoint's deliveries. To grant admin on the deployed project, run `npx nx grant-admin api -- <email>` with `FIREBASE_PROJECT_ID=<project-id>` and Application Default Credentials (`gcloud auth application-default login`).
+
+### Costs
+
+A demo with little traffic should cost nothing or a few cents a month. Free tiers change, so check current pricing, and set a budget alert under Billing → Budgets.
+
+- **Cloud Run:** scales to zero, with a monthly free allowance of requests, CPU and memory. `--max-instances=2` caps the worst case.
+- **Firebase Hosting:** free storage and transfer allowances.
+- **Firestore:** daily free reads, writes and deletes, plus 1 GiB of storage.
+- **Secret Manager:** a few active secret versions and 10,000 accesses a month are free. Secrets are read only when an instance starts.
+- **Artifact Registry:** 0.5 GB of free storage. The cleanup policy keeps the last 5 images and deletes others after 30 days.
+- **Cloud Build:** a free allowance of build minutes. Each deploy builds one small image. The source bucket deletes uploads after 7 days.
+
+### Tear down
+
+```sh
+gcloud run services delete saas-starter-api --region=europe-west1 --project=<project-id>
+firebase hosting:disable --project=<project-id>
+gcloud artifacts repositories delete saas-starter --location=europe-west1 --project=<project-id>
+gcloud secrets delete stripe-secret-key --project=<project-id>
+gcloud secrets delete stripe-webhook-secret --project=<project-id>
+gcloud storage rm --recursive gs://<project-id>-build-source
+# Project-level roles from setup (bucket, repo, secret and self bindings go with those resources):
+gcloud projects remove-iam-policy-binding <project-id> --condition=None \
+  --member=serviceAccount:saas-starter-api@<project-id>.iam.gserviceaccount.com --role=roles/datastore.user
+gcloud projects remove-iam-policy-binding <project-id> --condition=None \
+  --member=serviceAccount:saas-starter-api@<project-id>.iam.gserviceaccount.com --role=roles/firebaseauth.admin
+gcloud projects remove-iam-policy-binding <project-id> --condition=None \
+  --member=serviceAccount:saas-starter-build@<project-id>.iam.gserviceaccount.com --role=roles/logging.logWriter
+gcloud iam service-accounts delete saas-starter-api@<project-id>.iam.gserviceaccount.com --project=<project-id>
+gcloud iam service-accounts delete saas-starter-build@<project-id>.iam.gserviceaccount.com --project=<project-id>
+stripe webhook_endpoints delete we_…        # the endpoint id from `stripe webhook_endpoints list`
+```
+
+Or delete the whole project with `gcloud projects delete <project-id>`, which also removes every resource, service account and role binding above.
+
 ## License
 
 [MIT](LICENSE) © 2026 Arman Sargsyan
