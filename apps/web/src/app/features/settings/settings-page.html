@@ -1,0 +1,328 @@
+<div class="mx-auto grid max-w-2xl gap-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
+    <p class="text-muted-foreground mt-1 text-sm">
+      Your profile, how the app looks, and your account.
+    </p>
+  </div>
+
+  @if (readOnly()) {
+  <div hlmAlert data-testid="read-only">
+    <p hlmAlertDescription>
+      You’re viewing this account as an admin, so settings are read-only.
+    </p>
+  </div>
+  }
+
+  <!-- Profile -->
+  <section hlmCard aria-labelledby="profile-title">
+    <div hlmCardHeader>
+      <h2 hlmCardTitle id="profile-title">Profile</h2>
+      <p hlmCardDescription>
+        Your name and picture in the app. Teams see your email.
+      </p>
+    </div>
+    <form
+      hlmCardContent
+      class="grid gap-5"
+      (submit)="saveProfile($event)"
+      novalidate
+      data-testid="profile-form"
+    >
+      <fieldset class="contents" [disabled]="readOnly()">
+        <div class="flex items-center gap-4">
+          <app-user-avatar
+            size="lg"
+            [photoURL]="photo().trim()"
+            [displayName]="name()"
+            [email]="user()?.email"
+            data-testid="avatar-preview"
+          />
+          <div class="min-w-0 text-sm">
+            <p class="truncate font-medium">
+              {{ name().trim() || user()?.email }}
+            </p>
+            <p
+              class="text-muted-foreground truncate"
+              data-testid="settings-email"
+            >
+              {{ user()?.email }}
+            </p>
+          </div>
+        </div>
+
+        <app-form-field
+          for="settings-name"
+          label="Display name"
+          [error]="error('displayName')"
+        >
+          <input
+            hlmInput
+            id="settings-name"
+            type="text"
+            autocomplete="name"
+            [value]="name()"
+            (input)="onInput('displayName', $event)"
+            [attr.maxlength]="maxName"
+            [forceInvalid]="!!error('displayName')"
+            [attr.aria-invalid]="error('displayName') ? 'true' : null"
+            [attr.aria-describedby]="error('displayName') ? 'settings-name-error' : null"
+            data-testid="name-input"
+          />
+        </app-form-field>
+
+        <app-form-field
+          for="settings-photo"
+          label="Profile picture URL (optional)"
+          [error]="error('photoURL')"
+          hint="An https:// link to an image, such as your Gravatar or GitHub avatar. Leave it empty to show your initials."
+        >
+          <input
+            hlmInput
+            id="settings-photo"
+            type="url"
+            inputmode="url"
+            autocapitalize="none"
+            spellcheck="false"
+            placeholder="https://"
+            [value]="photo()"
+            (input)="onInput('photoURL', $event)"
+            [attr.maxlength]="maxUrl"
+            [forceInvalid]="!!error('photoURL')"
+            [attr.aria-invalid]="error('photoURL') ? 'true' : null"
+            [attr.aria-describedby]="error('photoURL') ? 'settings-photo-error' : 'settings-photo-hint'"
+            data-testid="photo-input"
+          />
+        </app-form-field>
+
+        <div>
+          <div role="alert" class="not-empty:mb-4">
+            @if (profileError()) {
+            <div hlmAlert variant="destructive" data-testid="profile-error">
+              <p hlmAlertDescription>{{ profileError() }}</p>
+            </div>
+            }
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              hlmBtn
+              type="submit"
+              class="aria-disabled:opacity-60"
+              [attr.aria-disabled]="saving() || !dirty() ? 'true' : null"
+              [attr.aria-busy]="saving()"
+              data-testid="save-profile"
+            >
+              {{ saving() ? 'Saving…' : 'Save profile' }}
+            </button>
+            <p
+              role="status"
+              class="text-muted-foreground text-sm"
+              data-testid="profile-status"
+            >
+              @if (profileSaved()) { Profile saved. }
+            </p>
+          </div>
+        </div>
+      </fieldset>
+    </form>
+  </section>
+
+  <!-- Appearance -->
+  <section hlmCard aria-labelledby="appearance-title">
+    <div hlmCardHeader>
+      <h2 hlmCardTitle id="appearance-title">Appearance</h2>
+      <p hlmCardDescription>
+        Saved on this device. System follows your device’s light or dark
+        setting.
+      </p>
+    </div>
+    <div hlmCardContent>
+      <fieldset>
+        <legend class="mb-2 text-sm font-medium">Theme</legend>
+        <div class="grid grid-cols-3 gap-2" data-testid="theme-options">
+          @for (option of themes; track option) {
+          <label
+            class="has-checked:border-primary has-checked:bg-accent has-focus-visible:ring-ring/50 hover:bg-accent/60 flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border p-3 text-sm has-focus-visible:ring-3"
+          >
+            <input
+              type="radio"
+              name="theme"
+              class="sr-only"
+              [value]="option"
+              [checked]="theme.preference() === option"
+              (change)="setTheme(option)"
+              [attr.data-testid]="'theme-' + option"
+            />
+            <ng-icon
+              [name]="themeIcons[option]"
+              class="text-lg"
+              aria-hidden="true"
+            />
+            {{ themeLabels[option] }}
+          </label>
+          }
+        </div>
+      </fieldset>
+    </div>
+  </section>
+
+  <!-- Danger zone -->
+  <section hlmCard class="ring-destructive/30" aria-labelledby="delete-title">
+    <div hlmCardHeader>
+      <h2 hlmCardTitle id="delete-title">Delete account</h2>
+      <p hlmCardDescription>
+        Permanently deletes your account and everything in your personal
+        workspace. This can’t be undone.
+      </p>
+    </div>
+    <div hlmCardContent class="grid gap-4">
+      <ul class="text-muted-foreground list-disc space-y-1 ps-5 text-sm">
+        <li>
+          Your links and their click analytics are deleted. The short codes are
+          never reused.
+        </li>
+        <li>
+          A paid subscription is canceled right away, without a refund for the
+          rest of the period.
+        </li>
+        <li>
+          You leave every team you’re in. Teams you own alone are deleted; if
+          your team has other members, remove them first.
+        </li>
+      </ul>
+      <hlm-alert-dialog>
+        <button
+          hlmAlertDialogTrigger
+          hlmBtn
+          variant="destructive"
+          type="button"
+          class="w-fit"
+          [disabled]="readOnly()"
+          (click)="resetDeletion()"
+          data-testid="delete-account"
+        >
+          Delete account
+        </button>
+        <hlm-alert-dialog-content *hlmAlertDialogPortal="let ctx">
+          <hlm-alert-dialog-header>
+            <h2 hlmAlertDialogTitle>Delete your account?</h2>
+            <p hlmAlertDialogDescription>
+              Your links, analytics and subscription go with it. This can’t be
+              undone.
+            </p>
+          </hlm-alert-dialog-header>
+
+          <form
+            class="grid gap-3"
+            (submit)="$event.preventDefault(); deleteAccount(ctx.close)"
+            novalidate
+          >
+            <app-form-field
+              for="delete-confirm"
+              [label]="'Type ' + confirmPhrase() + ' to confirm'"
+              [error]="confirmError()"
+            >
+              <input
+                hlmInput
+                id="delete-confirm"
+                type="text"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+                [value]="confirmText()"
+                (input)="onConfirmInput($event)"
+                [forceInvalid]="!!confirmError()"
+                [attr.aria-invalid]="confirmError() ? 'true' : null"
+                [attr.aria-describedby]="confirmError() ? 'delete-confirm-error' : null"
+                data-testid="delete-confirm"
+              />
+            </app-form-field>
+
+            @if (reauth() === 'password') {
+            <app-form-field for="delete-password" label="Password">
+              <input
+                hlmInput
+                id="delete-password"
+                type="password"
+                autocomplete="current-password"
+                [value]="reauthPassword()"
+                (input)="onReauthPassword($event)"
+                data-testid="delete-password"
+              />
+            </app-form-field>
+            }
+
+            <div>
+              <div role="alert" class="not-empty:mb-3">
+                @if (deleteError()) {
+                <div hlmAlert variant="destructive" data-testid="delete-error">
+                  <p hlmAlertDescription>{{ deleteError() }}</p>
+                  @if (blockingTeams().length) {
+                  <ul hlmAlertDescription class="mt-1 list-disc ps-5">
+                    @for (team of blockingTeams(); track team.id) {
+                    <li>
+                      <a
+                        [routerLink]="['/teams', team.id]"
+                        class="font-medium underline underline-offset-4"
+                        (click)="ctx.close()"
+                        >{{ team.name }}</a
+                      >
+                    </li>
+                    }
+                  </ul>
+                  } @if (sessionExpired()) {
+                  <button
+                    hlmBtn
+                    size="sm"
+                    type="button"
+                    class="mt-2 w-fit"
+                    (click)="signInAgain(ctx.close)"
+                    data-testid="sign-in-again"
+                  >
+                    Sign in again
+                  </button>
+                  }
+                </div>
+                }
+              </div>
+
+              <hlm-alert-dialog-footer>
+                <button hlmAlertDialogCancel [disabled]="deleting()">
+                  Cancel
+                </button>
+                @if (reauth() === 'google') {
+                <button
+                  hlmAlertDialogAction
+                  type="button"
+                  variant="destructive"
+                  class="aria-disabled:opacity-60"
+                  [attr.aria-disabled]="!confirmed() || deleting() ? 'true' : null"
+                  [attr.aria-busy]="deleting()"
+                  (click)="reauthWithGoogle(ctx.close)"
+                  data-testid="confirm-delete-google"
+                >
+                  {{ deleting() ? 'Deleting…' : 'Confirm with Google and delete'
+                  }}
+                </button>
+                } @else {
+                <button
+                  hlmAlertDialogAction
+                  type="submit"
+                  variant="destructive"
+                  class="aria-disabled:opacity-60"
+                  [attr.aria-disabled]="!confirmed() || deleting() ? 'true' : null"
+                  [attr.aria-busy]="deleting()"
+                  data-testid="confirm-delete"
+                >
+                  {{ deleting() ? 'Deleting…' : 'Delete account' }}
+                </button>
+                }
+              </hlm-alert-dialog-footer>
+            </div>
+          </form>
+        </hlm-alert-dialog-content>
+      </hlm-alert-dialog>
+    </div>
+  </section>
+</div>

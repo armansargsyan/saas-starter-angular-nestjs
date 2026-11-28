@@ -25,6 +25,12 @@ export const HANDLED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'invoice.payment_failed',
 ]);
 
+/** Statuses after which a subscription can never bill again. */
+const FINAL_STATUSES: ReadonlySet<string> = new Set([
+  'canceled',
+  'incomplete_expired',
+]);
+
 @Injectable()
 export class StripeBillingProvider extends BillingProvider {
   constructor(
@@ -135,6 +141,33 @@ export class StripeBillingProvider extends BillingProvider {
     return page.data
       .filter((invoice) => invoice.status !== 'draft')
       .map(toInvoice);
+  }
+
+  async cancelAllSubscriptions(customerId: string): Promise<string[]> {
+    const open: string[] = [];
+    let startingAfter: string | undefined;
+    for (;;) {
+      const page = await this.stripe.subscriptions.list({
+        customer: customerId,
+        status: 'all',
+        limit: 100,
+        ...(startingAfter && { starting_after: startingAfter }),
+      });
+      for (const sub of page.data) {
+        if (!FINAL_STATUSES.has(sub.status)) open.push(sub.id);
+      }
+      if (!page.has_more || page.data.length === 0) break;
+      startingAfter = page.data[page.data.length - 1].id;
+    }
+    for (const id of open) {
+      try {
+        await this.stripe.subscriptions.cancel(id);
+      } catch (err) {
+        // Gone meanwhile (e.g. its customer was deleted): nothing to cancel.
+        if ((err as { code?: unknown }).code !== 'resource_missing') throw err;
+      }
+    }
+    return open;
   }
 
   parseWebhook(rawBody: Buffer, signature: string): ProviderEvent {

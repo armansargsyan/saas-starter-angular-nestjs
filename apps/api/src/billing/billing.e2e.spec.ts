@@ -102,6 +102,7 @@ describe('billing api', () => {
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       plan: null,
+      deletionLocked: false,
     });
     repo.saveCustomerId.mockImplementation(
       async (_ws: string, id: string) => id,
@@ -265,6 +266,7 @@ describe('billing api', () => {
         stripeCustomerId: 'cus_1',
         stripeSubscriptionId: null,
         plan: null, // webhook not synced yet
+        deletionLocked: false,
       });
       vi.spyOn(stripe.subscriptions, 'list').mockResolvedValue({
         data: [stripeSubscription()],

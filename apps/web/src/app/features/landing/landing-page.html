@@ -6,6 +6,24 @@
 <app-site-header />
 
 <main id="main" tabindex="-1" class="outline-none">
+  <div role="status" class="mx-auto max-w-6xl px-4 not-empty:pt-6 sm:px-6">
+    @if (accountDeleted()) {
+    <div hlmAlert class="flex items-center gap-2" data-testid="account-deleted">
+      <p hlmAlertDescription class="flex-1">
+        Your account and all its data were deleted.
+      </p>
+      <button
+        hlmBtn
+        variant="ghost"
+        size="sm"
+        type="button"
+        (click)="accountDeleted.set(false)"
+      >
+        Dismiss
+      </button>
+    </div>
+    }
+  </div>
   <section
     aria-labelledby="hero-title"
     class="mx-auto max-w-6xl px-4 pt-20 pb-16 text-center sm:px-6 sm:pt-28"

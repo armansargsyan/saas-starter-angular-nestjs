@@ -287,6 +287,99 @@ export class AuthService {
     return this.state() ?? null;
   }
 
+  /**
+   * After the api changed the profile: re-reads the Firebase user, so user()
+   * shows it now and a later token refresh doesn't bring back the old one.
+   * If the re-read fails, user() still shows what the api saved.
+   */
+  async refreshProfile(saved: {
+    displayName: string | null;
+    photoURL: string | null;
+  }): Promise<void> {
+    const user = (await this.auth()).currentUser;
+    if (!user) return;
+    try {
+      await user.reload();
+      this.publish(user);
+    } catch {
+      this.state.update((current) =>
+        current?.uid === user.uid ? { ...current, ...saved } : current,
+      );
+    }
+  }
+
+  /**
+   * Proves it's still the account holder (the api wants a fresh sign-in
+   * before deleting the account): the new ID token carries a new
+   * `auth_time`, and the interceptor sends it from the next request on.
+   */
+  async reauthenticateWithPassword(password: string): Promise<void> {
+    const { mod, auth } = await this.module();
+    const user = auth.currentUser;
+    if (!user?.email) throw new Error('No password account is signed in');
+    const credential = mod.EmailAuthProvider.credential(user.email, password);
+    await mod.reauthenticateWithCredential(user, credential);
+    await user.getIdToken(true);
+  }
+
+  /** Like signInWithGoogle: the popup opens within the click when loaded. */
+  reauthenticateWithGoogle(): Promise<void> {
+    const run = async ({ mod, auth }: { auth: Auth; mod: AuthModule }) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not signed in');
+      const provider = new mod.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      // Nothing awaited before this line: the popup opens within the click.
+      await mod.reauthenticateWithPopup(user, provider);
+      await user.getIdToken(true);
+    };
+    if (this.loaded) return run(this.loaded);
+    return this.module().then(run);
+  }
+
+  /**
+   * After a failed or lost delete: true only when Firebase says the account
+   * no longer exists (it was deleted after all); false for anything else
+   * (a revoked session, a network error, an unclear answer).
+   *
+   * It asks the Identity Toolkit api directly rather than through
+   * `user.reload()`: the SDK reports a deleted user and a revoked session
+   * alike (`auth/user-token-expired`), and signs out on both. The raw
+   * answer tells them apart (`USER_NOT_FOUND`).
+   */
+  async isAccountGone(): Promise<boolean> {
+    const user = (await this.auth()).currentUser;
+    if (!user) return false;
+    let idToken: string;
+    try {
+      // Cached (deletion needs a sign-in from the last minutes, and ID
+      // tokens last an hour), so this doesn't hit the token endpoint.
+      idToken = await user.getIdToken();
+    } catch {
+      return false;
+    }
+    const { apiKey, authEmulatorUrl } = this.options;
+    const origin =
+      authEmulatorUrl && this.devMode
+        ? `${authEmulatorUrl}/identitytoolkit.googleapis.com`
+        : 'https://identitytoolkit.googleapis.com';
+    try {
+      const res = await fetch(
+        `${origin}/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        },
+      );
+      if (res.ok) return false;
+      const body = (await res.json()) as { error?: { message?: unknown } };
+      return body.error?.message === 'USER_NOT_FOUND';
+    } catch {
+      return false;
+    }
+  }
+
   async signOut(): Promise<void> {
     const { mod, auth } = await this.module();
     await mod.signOut(auth);

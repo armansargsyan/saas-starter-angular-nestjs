@@ -1,5 +1,10 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  signal,
+} from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   lucideChartColumn,
@@ -9,9 +14,11 @@ import {
   lucideUserCog,
   lucideUsers,
 } from '@ng-icons/lucide';
+import { HlmAlertImports } from '@spartan-ng/helm/alert';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmCardImports } from '@spartan-ng/helm/card';
 import { AuthService } from '../../core/auth.service';
+import { ACCOUNT_DELETED_STATE } from '../../core/navigation-state';
 import { SiteHeader } from '../../layout/site-header';
 import { PricingTable } from '../pricing/pricing-table';
 
@@ -53,6 +60,7 @@ const FEATURES = [
   imports: [
     RouterLink,
     NgIcon,
+    HlmAlertImports,
     HlmButtonImports,
     HlmCardImports,
     SiteHeader,
@@ -74,4 +82,10 @@ const FEATURES = [
 export class LandingPage {
   protected readonly auth = inject(AuthService);
   protected readonly features = FEATURES;
+  /** Arrived here right after deleting the account (navigation state). */
+  protected readonly accountDeleted = signal(
+    inject(Router).currentNavigation()?.extras.state?.[
+      ACCOUNT_DELETED_STATE
+    ] === true,
+  );
 }

@@ -1,7 +1,9 @@
+import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { FakeAuth } from '../../../testing/fake-auth';
 import { AuthService } from '../../core/auth.service';
 import { LandingPage } from './landing-page';
@@ -70,5 +72,41 @@ describe('LandingPage', () => {
     );
     expect(el.querySelector('[data-testid="header-signup"]')).toBeNull();
     expect(el.querySelector('[data-testid="header-dashboard"]')).toBeNull();
+  });
+
+  describe('after deleting an account', () => {
+    async function arrive(state?: Record<string, unknown>) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([{ path: '', component: LandingPage }]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          { provide: AuthService, useValue: auth },
+        ],
+      });
+      const harness = await RouterTestingHarness.create();
+      await TestBed.inject(Router).navigateByUrl('/', { state });
+      harness.detectChanges();
+      return harness.routeNativeElement as HTMLElement;
+    }
+
+    it('confirms the deletion, dismissibly', async () => {
+      const el = await arrive({ accountDeleted: true });
+      const notice = el.querySelector('[data-testid="account-deleted"]');
+      expect(notice?.textContent).toContain(
+        'Your account and all its data were deleted.',
+      );
+      expect(notice?.closest('[role="status"]')).not.toBeNull();
+
+      notice?.querySelector('button')?.click();
+      await TestBed.inject(ApplicationRef).whenStable();
+      expect(el.querySelector('[data-testid="account-deleted"]')).toBeNull();
+    });
+
+    it('says nothing on a normal visit', async () => {
+      const el = await arrive();
+      expect(el.querySelector('[data-testid="account-deleted"]')).toBeNull();
+    });
   });
 });

@@ -125,6 +125,99 @@ describe('getSubscription', () => {
   });
 });
 
+describe('cancelAllSubscriptions', () => {
+  const sub = (id: string, status: string) => ({ id, status });
+
+  it('pages through every subscription and cancels all that can still bill', async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: [
+          sub('sub_active', 'active'),
+          sub('sub_incomplete', 'incomplete'),
+          sub('sub_done', 'canceled'),
+        ],
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        data: [
+          sub('sub_unpaid', 'unpaid'),
+          sub('sub_paused', 'paused'),
+          sub('sub_trial', 'trialing'),
+          sub('sub_late', 'past_due'),
+          sub('sub_expired', 'incomplete_expired'),
+        ],
+        has_more: false,
+      });
+    const cancel = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      // Already gone by the time we get to it: fine.
+      .mockRejectedValueOnce(
+        Object.assign(new Error('x'), { code: 'resource_missing' }),
+      )
+      .mockResolvedValue({});
+    const client = { subscriptions: { list, cancel } } as unknown as Stripe;
+
+    const canceled = await new StripeBillingProvider(
+      client,
+      config,
+    ).cancelAllSubscriptions('cus_1');
+
+    expect(list).toHaveBeenNthCalledWith(1, {
+      customer: 'cus_1',
+      status: 'all',
+      limit: 100,
+    });
+    expect(list).toHaveBeenNthCalledWith(2, {
+      customer: 'cus_1',
+      status: 'all',
+      limit: 100,
+      starting_after: 'sub_done',
+    });
+    const expected = [
+      'sub_active',
+      'sub_incomplete',
+      'sub_unpaid',
+      'sub_paused',
+      'sub_trial',
+      'sub_late',
+    ];
+    expect(canceled).toEqual(expected);
+    expect(cancel.mock.calls.map(([id]) => id)).toEqual(expected);
+  });
+
+  it('cancels nothing for a customer without open subscriptions', async () => {
+    const cancel = vi.fn();
+    const client = {
+      subscriptions: {
+        list: vi.fn().mockResolvedValue({ data: [], has_more: false }),
+        cancel,
+      },
+    } as unknown as Stripe;
+    expect(
+      await new StripeBillingProvider(client, config).cancelAllSubscriptions(
+        'cus_1',
+      ),
+    ).toEqual([]);
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('fails on any other Stripe error', async () => {
+    const client = {
+      subscriptions: {
+        list: vi
+          .fn()
+          .mockResolvedValue({ data: [sub('s', 'active')], has_more: false }),
+        cancel: vi.fn().mockRejectedValue(new Error('down')),
+      },
+    } as unknown as Stripe;
+    await expect(
+      new StripeBillingProvider(client, config).cancelAllSubscriptions('c'),
+    ).rejects.toThrow('down');
+  });
+});
+
 describe('live mode, live subscriptions and invoices', () => {
   it('flags live-mode events', () => {
     const { body, header } = signed({

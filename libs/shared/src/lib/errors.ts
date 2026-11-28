@@ -31,6 +31,14 @@ export const API_ERROR_CODES = [
   'impersonation_read_only',
   /** 403: admins can't be banned or impersonated (and you can't target yourself). */
   'admin_protected',
+  /** 409: you own a team that still has other members; empty it first. */
+  'owns_team_with_members',
+  /** 403: sign in again (at most RECENT_LOGIN_MAX_MINUTES ago) to do this. */
+  'requires_recent_login',
+  /** 409: the team is being deleted with its owner's account. */
+  'team_deleting',
+  /** 409: your account is being deleted (no new checkouts or portal). */
+  'account_deleting',
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 

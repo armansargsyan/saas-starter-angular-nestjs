@@ -10,6 +10,7 @@ const user: AuthUser = {
   emailVerified: true,
   role: 'user',
   tokenIssuedAt: new Date(0),
+  authTime: new Date(0),
 };
 
 function service(isMember: boolean) {

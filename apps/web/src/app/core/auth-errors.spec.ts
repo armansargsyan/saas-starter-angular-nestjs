@@ -8,6 +8,7 @@ describe('authErrorMessage', () => {
     ['auth/user-disabled', 'suspended'],
     ['auth/too-many-requests', 'Too many attempts'],
     ['auth/network-request-failed', 'connection'],
+    ['auth/user-mismatch', 'different account'],
     ['app/impersonation-read-only', 'read-only'],
     ['auth/something-new', 'Something went wrong'],
   ])('%s', (code, text) => {

@@ -4,7 +4,12 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { deleteApp, initializeApp, type App } from 'firebase-admin/app';
-import { type Firestore, getFirestore } from 'firebase-admin/firestore';
+import {
+  type Firestore,
+  getFirestore,
+  Timestamp,
+} from 'firebase-admin/firestore';
+import { DELETION_LOCK_MS } from '../workspaces/workspace-docs';
 import { effectivePlanId } from '@saas-starter/shared';
 import { FirestoreLinksRepository } from '../links/links.repository';
 import { FirestoreWorkspacesRepository } from '../workspaces/workspaces.repository';
@@ -67,7 +72,22 @@ describe.skipIf(!host)('FirestoreBillingRepository (emulator)', () => {
         type: 'personal',
         ownerUid: 'alice',
         stripeCustomerId: 'cus_1',
+        deletionLocked: false,
       });
+
+      // An account deletion's lock, fresh then lapsed.
+      const lock = (msAgo: number) =>
+        db
+          .doc('workspaces/alice')
+          .update({ deletingAt: Timestamp.fromMillis(Date.now() - msAgo) });
+      await lock(0);
+      expect((await repo.getWorkspaceBilling('alice')).deletionLocked).toBe(
+        true,
+      );
+      await lock(DELETION_LOCK_MS + 1000);
+      expect((await repo.getWorkspaceBilling('alice')).deletionLocked).toBe(
+        false,
+      );
       expect(await repo.findWorkspaceIdByCustomer('cus_1')).toBe('alice');
       expect(await repo.findWorkspaceIdByCustomer('cus_x')).toBeNull();
     });

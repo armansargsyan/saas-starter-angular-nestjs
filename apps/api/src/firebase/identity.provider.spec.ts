@@ -131,3 +131,29 @@ describe('admin operations', () => {
     });
   });
 });
+
+describe('profile and deletion', () => {
+  it('updates only the given profile fields', async () => {
+    const updateUser = vi.fn().mockResolvedValue({});
+    await provider({ updateUser }).updateProfile('u1', { photoURL: null });
+    expect(updateUser).toHaveBeenCalledWith('u1', { photoURL: null });
+  });
+
+  it('deletes the user, and treats an already deleted one as done', async () => {
+    const deleteUser = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(
+        Object.assign(new Error('gone'), { code: 'auth/user-not-found' }),
+      )
+      .mockRejectedValueOnce(
+        Object.assign(new Error('down'), { code: 'auth/internal-error' }),
+      );
+    const p = provider({ deleteUser });
+
+    await p.deleteUser('u1');
+    await p.deleteUser('u1');
+    await expect(p.deleteUser('u1')).rejects.toThrow('down');
+    expect(deleteUser).toHaveBeenCalledWith('u1');
+  });
+});

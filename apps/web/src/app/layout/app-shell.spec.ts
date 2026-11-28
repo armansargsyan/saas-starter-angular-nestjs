@@ -1,3 +1,4 @@
+import { OVERLAY_DEFAULT_CONFIG } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import {
@@ -25,6 +26,8 @@ describe('AppShell', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: AuthService, useValue: auth },
+        // As SIGNED_IN_ROUTES provides it (the account menu is an overlay).
+        { provide: OVERLAY_DEFAULT_CONFIG, useValue: { usePopover: false } },
       ],
     });
     window.localStorage.clear();
@@ -52,8 +55,13 @@ describe('AppShell', () => {
     );
     expect(links).toEqual(['Links', 'Teams', 'Billing']);
     expect(
-      el.querySelector('[data-testid="account-email"]')?.textContent,
+      el.querySelector('[data-testid="account-name"]')?.textContent,
     ).toContain('u1@example.com');
+    expect(
+      el
+        .querySelector('[data-testid="account-menu"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Account menu, u1@example.com');
     expect(el.querySelector('main#main')).not.toBeNull();
   });
 
@@ -194,9 +202,12 @@ describe('AppShell', () => {
     const navigate = vi
       .spyOn(TestBed.inject(Router), 'navigateByUrl')
       .mockResolvedValue(true);
-    const { el } = await render();
-    [...el.querySelectorAll('button')]
-      .find((b) => b.textContent?.includes('Sign out'))
+    const { fixture, el } = await render();
+    el.querySelector<HTMLElement>('[data-testid="account-menu"]')?.click();
+    await fixture.whenStable();
+    // The menu renders in an overlay, outside the component.
+    document
+      .querySelector<HTMLElement>('[data-testid="menu-sign-out"]')
       ?.click();
     await settle();
     expect(auth.signOut).toHaveBeenCalled();

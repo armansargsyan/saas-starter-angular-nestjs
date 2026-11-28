@@ -1,5 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import type { ApiErrorBody, PlanLimitErrorBody } from '@saas-starter/shared';
+import type {
+  AccountDeletionBlockedBody,
+  ApiErrorBody,
+  PlanLimitErrorBody,
+} from '@saas-starter/shared';
 import { firstValueFrom, type Observable } from 'rxjs';
 
 /** A failed api call, in terms the UI can show. */
@@ -11,6 +15,8 @@ export interface ApiError {
   fields: Record<string, string>;
   /** Present for `plan_limit_reached`. */
   limit?: PlanLimitErrorBody;
+  /** Present for `owns_team_with_members`: the teams to empty first. */
+  teams?: AccountDeletionBlockedBody['teams'];
 }
 
 export type ApiResult<T> =
@@ -71,6 +77,11 @@ export function toApiError(err: unknown): ApiError {
       fields: {},
       ...(body.code === 'plan_limit_reached' && {
         limit: body as PlanLimitErrorBody,
+      }),
+      ...(body.code === 'owns_team_with_members' && {
+        teams: Array.isArray((body as AccountDeletionBlockedBody).teams)
+          ? (body as AccountDeletionBlockedBody).teams
+          : [],
       }),
     };
   }

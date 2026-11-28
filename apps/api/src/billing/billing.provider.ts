@@ -79,6 +79,15 @@ export abstract class BillingProvider {
   abstract listInvoices(customerId: string, limit: number): Promise<Invoice[]>;
 
   /**
+   * For account deletion: cancels, now and without a proration refund,
+   * every subscription of the customer that can still bill or become live:
+   * any status but `canceled` and `incomplete_expired` (so also
+   * `incomplete`, `unpaid` and `paused`, which LIVE_STATUSES leaves out).
+   * Idempotent. Returns the ids it canceled.
+   */
+  abstract cancelAllSubscriptions(customerId: string): Promise<string[]>;
+
+  /**
    * Verifies the `Stripe-Signature` header against the raw body.
    * @throws InvalidWebhookSignatureError
    */

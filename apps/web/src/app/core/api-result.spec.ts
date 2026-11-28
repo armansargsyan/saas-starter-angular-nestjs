@@ -49,6 +49,25 @@ describe('apiResult / toApiError', () => {
     expect(toApiError(httpError(403, body)).limit).toEqual(body);
   });
 
+  it('keeps the teams that block an account deletion', () => {
+    const teams = [{ id: 't1', name: 'Acme' }];
+    expect(
+      toApiError(
+        httpError(409, {
+          statusCode: 409,
+          code: 'owns_team_with_members',
+          message: 'You own a team…',
+          teams,
+        }),
+      ).teams,
+    ).toEqual(teams);
+    expect(
+      toApiError(
+        httpError(409, { code: 'owns_team_with_members', message: 'x' }),
+      ).teams,
+    ).toEqual([]);
+  });
+
   it('shows 4xx messages, but never 5xx or network details', () => {
     expect(toApiError(httpError(403, { message: 'Not allowed' })).message).toBe(
       'Not allowed',

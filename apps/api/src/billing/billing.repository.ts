@@ -6,7 +6,10 @@ import {
   Timestamp,
 } from 'firebase-admin/firestore';
 import { FIRESTORE } from '../firebase/firebase.tokens';
-import { newPersonalWorkspace } from '../workspaces/workspace-docs';
+import {
+  isDeletionLocked,
+  newPersonalWorkspace,
+} from '../workspaces/workspace-docs';
 import { toWorkspacePlan } from '../workspaces/workspaces.repository';
 import { LIVE_STATUSES, type ProviderSubscription } from './billing.provider';
 
@@ -17,6 +20,8 @@ export interface WorkspaceBilling {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   plan: WorkspacePlan | null;
+  /** Locked by an account deletion in progress (`deletingAt`). */
+  deletionLocked: boolean;
 }
 
 export type ApplyResult =
@@ -92,6 +97,7 @@ export class FirestoreBillingRepository extends BillingRepository {
       stripeCustomerId: str('stripeCustomerId'),
       stripeSubscriptionId: str('stripeSubscriptionId'),
       plan: toWorkspacePlan(snap.get('plan')),
+      deletionLocked: isDeletionLocked(snap.get('deletingAt'), new Date()),
     };
   }
 

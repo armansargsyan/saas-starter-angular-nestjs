@@ -48,6 +48,25 @@ export class FakeAuth {
   readonly reloadUser = vi.fn<() => Promise<SessionUser | null>>(
     async () => this.state() ?? null,
   );
+  readonly refreshProfile = vi.fn<
+    (saved: {
+      displayName: string | null;
+      photoURL: string | null;
+    }) => Promise<void>
+  >(async (saved) => {
+    this.state.update((user) => (user ? { ...user, ...saved } : user));
+  });
+  readonly reauthenticateWithPassword = vi.fn<
+    (password: string) => Promise<void>
+  >(async () => undefined);
+  readonly reauthenticateWithGoogle = vi.fn<() => Promise<void>>(
+    async () => undefined,
+  );
+  /** What isAccountGone() answers (after a delete whose answer was lost). */
+  accountGone = false;
+  readonly isAccountGone = vi.fn<() => Promise<boolean>>(
+    async () => this.accountGone,
+  );
   readonly signOut = vi.fn<() => Promise<void>>(async () =>
     this.setSignedOut(),
   );

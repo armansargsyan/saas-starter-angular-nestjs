@@ -10,6 +10,8 @@ export const RATE_LIMITS = {
   invites: { ttl: 60_000, limit: 20 },
   /** Creating teams and sending invites. */
   teamWrites: { ttl: 60_000, limit: 30 },
+  /** Profile edits and account deletion. */
+  account: { ttl: 60_000, limit: 10 },
 } as const;
 export type RateLimitName = keyof typeof RATE_LIMITS;
 
