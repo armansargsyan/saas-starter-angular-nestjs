@@ -22,10 +22,11 @@ const GAP = 2;
 const RADIUS = 4;
 
 /**
- * Clicks per day as a single-series column chart (dataviz spec): one hue,
- * 2px gaps, bars capped at 24px with 4px rounded tops anchored to the
- * baseline, a recessive grid, a hover/focus tooltip per bar, arrow-key
- * navigation, and a table view. No legend: the title names the series.
+ * A count per day (clicks by default; signups in the admin panel) as a
+ * single-series column chart (dataviz spec): one hue, 2px gaps, bars capped
+ * at 24px with 4px rounded tops anchored to the baseline, a recessive grid,
+ * a hover/focus tooltip per bar, arrow-key navigation, and a table view. No
+ * legend: the title names the series.
  */
 @Component({
   selector: 'app-clicks-chart',
@@ -106,9 +107,9 @@ const RADIUS = 4;
           data-testid="tooltip"
         >
           <span class="text-muted-foreground">{{ tip.date }}</span>{{ ' '
-          }}<span class="ml-1 font-medium tabular-nums"
-            >{{ tip.count }} click{{ tip.count === 1 ? '' : 's' }}</span
-          >
+          }}<span class="ml-1 font-medium tabular-nums">{{
+            amount(tip.count)
+          }}</span>
         </div>
       }
       <p [id]="'chart-focus-' + uid" class="sr-only" aria-live="polite">
@@ -124,12 +125,16 @@ const RADIUS = 4;
       </summary>
       <table class="mt-2 w-full text-left text-sm" data-testid="chart-table">
         <caption class="sr-only">
-          Clicks per day
+          {{
+            caption()
+          }}
         </caption>
         <thead>
           <tr class="border-b">
             <th scope="col" class="py-1.5 font-medium">Day</th>
-            <th scope="col" class="py-1.5 text-right font-medium">Clicks</th>
+            <th scope="col" class="py-1.5 text-right font-medium">
+              {{ series() }}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -146,7 +151,11 @@ const RADIUS = 4;
 })
 export class ClicksChart {
   readonly days = input.required<DayCount[]>();
+  /** What is counted, as a title ("Clicks") and a unit ("click"; +s for many). */
+  readonly series = input('Clicks');
+  readonly unit = input('click');
 
+  protected readonly caption = computed(() => `${this.series()} per day`);
   protected readonly pad = PAD;
   protected readonly height = HEIGHT;
   protected readonly uid = Math.random().toString(36).slice(2, 8);
@@ -229,20 +238,22 @@ export class ClicksChart {
   protected readonly liveText = computed(() => {
     const tip = this.tooltip();
     return tip
-      ? `${tip.date}: ${tip.count} click${tip.count === 1 ? '' : 's'}`
+      ? `${tip.date}: ${this.amount(tip.count)}`
       : 'Use the arrow keys to read each day.';
   });
 
   protected readonly label = computed(() => {
     const days = this.days();
     const total = days.reduce((sum, d) => sum + d.count, 0);
-    return `Clicks per day, ${days.length} days, ${total} click${total === 1 ? '' : 's'} in total.`;
+    return `${this.caption()}, ${days.length} days, ${this.amount(total)} in total.`;
   });
 
   constructor() {
     const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
     const destroyRef = inject(DestroyRef);
     afterNextRender(() => {
+      // Older browsers and jsdom: keep the default width.
+      if (typeof ResizeObserver === 'undefined') return;
       const observer = new ResizeObserver(([entry]) => {
         if (entry.contentRect.width > 0)
           this.width.set(Math.floor(entry.contentRect.width));
@@ -271,6 +282,10 @@ export class ClicksChart {
     if (next === undefined) return;
     event.preventDefault();
     this.active.set(next);
+  }
+
+  protected amount(count: number): string {
+    return `${count} ${this.unit()}${count === 1 ? '' : 's'}`;
   }
 
   protected format(date: string): string {

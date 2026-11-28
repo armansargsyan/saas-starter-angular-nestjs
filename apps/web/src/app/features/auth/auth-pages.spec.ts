@@ -40,6 +40,7 @@ describe('auth pages', () => {
             { path: 'verify-email', component: VerifyEmailPage },
             { path: 'dashboard', component: DashboardStub },
             { path: 'teams', children: [] },
+            { path: 'admin', children: [] },
             { path: 'invite', children: [] },
             { path: 'links/:code', children: [] },
             { path: '', children: [] },
@@ -110,6 +111,29 @@ describe('auth pages', () => {
       type('password', 'secret-pass');
       await submit();
       expect(router.url).toBe('/dashboard');
+    });
+
+    it('explains an ended impersonation session, and only then', async () => {
+      await harness.navigateByUrl('/login?redirect=%2Fadmin');
+      expect(q('[data-testid="signed-out-reason"]')).toBeNull();
+      await harness.navigateByUrl(
+        '/login?redirect=%2Fadmin&reason=impersonation-ended',
+      );
+      expect(q('[data-testid="signed-out-reason"]')?.textContent).toContain(
+        'Impersonation ended',
+      );
+      type('email', 'admin@example.com');
+      type('password', 'secret-pass');
+      await submit();
+      expect(router.url).toBe('/admin');
+
+      auth.setSignedOut();
+      await harness.navigateByUrl(
+        '/login?redirect=%2Fadmin&reason=impersonation-failed',
+      );
+      expect(q('[data-testid="signed-out-reason"]')?.textContent).toContain(
+        'Couldn’t view as that user',
+      );
     });
 
     it('keeps the redirect on the "Create an account" link', async () => {
@@ -282,6 +306,24 @@ describe('auth pages', () => {
     beforeEach(() =>
       auth.signIn('u1', { emailVerified: false, providers: ['password'] }),
     );
+
+    it('sends an impersonated session to the dashboard without touching the account', async () => {
+      auth.impersonatedBy.set('admin-1');
+      await harness.navigateByUrl('/verify-email');
+      await settle();
+      expect(router.url).toBe('/dashboard');
+      expect(auth.reloadUser).not.toHaveBeenCalled();
+      expect(auth.resendVerification).not.toHaveBeenCalled();
+    });
+
+    it('leaves once the claims show the session is impersonated', async () => {
+      await harness.navigateByUrl('/verify-email');
+      expect(router.url).toBe('/verify-email');
+      auth.impersonatedBy.set('admin-1');
+      await settle();
+      await harness.fixture.whenStable();
+      expect(router.url).toBe('/dashboard');
+    });
 
     it('re-checks on arrival and moves on if already verified (the emailed link)', async () => {
       auth.reloadUser.mockImplementationOnce(async () => {

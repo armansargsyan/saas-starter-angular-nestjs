@@ -3,6 +3,23 @@
   description="Welcome back. Sign in to manage your links."
 >
   <div class="grid gap-4">
+    @if (reason() === 'impersonation-ended') {
+    <div hlmAlert data-testid="signed-out-reason">
+      <p hlmAlertTitle>Impersonation ended</p>
+      <p hlmAlertDescription>
+        Read-only sessions as another user last up to {{ maxMinutes }} minutes.
+        Sign in to get back to the admin panel.
+      </p>
+    </div>
+    } @else if (reason() === 'impersonation-failed') {
+    <div hlmAlert data-testid="signed-out-reason">
+      <p hlmAlertTitle>Couldn’t view as that user</p>
+      <p hlmAlertDescription>
+        Starting the read-only session failed after signing you out of your
+        admin account. Sign in to get back to the admin panel and try again.
+      </p>
+    </div>
+    }
     <app-google-button
       [busy]="busy() === 'google'"
       [disabled]="busy() === 'email'"

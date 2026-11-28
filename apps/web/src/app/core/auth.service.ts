@@ -29,11 +29,23 @@ export interface SessionUser {
 
 /** Claims the web app reads (the api re-checks everything server-side). */
 interface SessionClaims {
+  /** Whose token these came from: they apply only while that user is signed in. */
+  uid: string | null;
   role: 'user' | 'admin';
   impersonatedBy: string | null;
+  /**
+   * Start of an impersonated session's window (epoch ms): the api ends it
+   * IMPERSONATION_MAX_MINUTES later.
+   */
+  impersonationStartedAt: number | null;
 }
 
-const NO_CLAIMS: SessionClaims = { role: 'user', impersonatedBy: null };
+const NO_CLAIMS: SessionClaims = {
+  uid: null,
+  role: 'user',
+  impersonatedBy: null,
+  impersonationStartedAt: null,
+};
 
 /**
  * Firebase Auth session state and actions. The SDK is loaded lazily, so it
@@ -51,26 +63,71 @@ export class AuthService {
   /** `undefined` until Firebase reports the initial state. */
   private readonly state = signal<SessionUser | null | undefined>(undefined);
   private readonly claims = signal<SessionClaims>(NO_CLAIMS);
+  /** The admin's uid while switching to an impersonated session. */
+  private readonly switchingFrom = signal<string | null>(null);
+
+  /**
+   * The current user's claims. Until a new user's claims are read, the
+   * previous user's never apply (no admin carried over); while switching to
+   * an impersonated session, it already counts as impersonated (read-only).
+   */
+  private readonly session = computed<SessionClaims>(() => {
+    const uid = this.state()?.uid ?? null;
+    const claims = this.claims();
+    if (uid !== null && claims.uid === uid) return claims;
+    const from = this.switchingFrom();
+    return uid !== null && from !== null
+      ? { ...NO_CLAIMS, uid, impersonatedBy: from }
+      : NO_CLAIMS;
+  });
 
   readonly user = this.state.asReadonly();
   readonly ready = computed(() => this.state() !== undefined);
   readonly signedIn = computed(() => !!this.state());
-  /** UI hint only: admin routes are enforced by the api. */
+  /** UI hint only: admin routes are enforced by the api (never while impersonating). */
   readonly isAdmin = computed(
-    () => this.signedIn() && this.claims().role === 'admin',
+    () =>
+      this.signedIn() &&
+      this.session().role === 'admin' &&
+      !this.session().impersonatedBy,
   );
-  readonly impersonatedBy = computed(() => this.claims().impersonatedBy);
+  readonly impersonatedBy = computed(() => this.session().impersonatedBy);
+  /**
+   * Whether the signed-in user's claims have been read. Until then nothing
+   * is known about impersonation: UI that must not show in an impersonated
+   * session (e.g. the verify-email prompt) waits for this.
+   */
+  readonly claimsKnown = computed(() => {
+    const uid = this.state()?.uid;
+    return !!uid && this.session().uid === uid;
+  });
+  /** The shell adds IMPERSONATION_MAX_MINUTES (kept out of this initial-bundle file). */
+  readonly impersonationStartedAt = computed(
+    () => this.session().impersonationStartedAt,
+  );
 
   constructor() {
     this.auth().catch(() => undefined); // failure already handled in auth()
   }
 
-  /** Resolves once the initial session state is known (never rejects). */
+  /**
+   * Resolves once the initial session state and the signed-in user's claims
+   * are known (never rejects), so guarded pages render knowing whether the
+   * session is impersonated, even right after a reload.
+   */
   async whenReady(): Promise<void> {
     try {
-      await (await this.auth()).authStateReady();
+      const auth = await this.auth();
+      await auth.authStateReady();
+      const user = auth.currentUser;
+      if (!user || this.claims().uid === user.uid) return;
+      const { claims } = await user.getIdTokenResult();
+      if (auth.currentUser?.uid === user.uid) {
+        this.claims.set(toSessionClaims(user.uid, claims));
+      }
     } catch {
-      // Load failure: auth() already set the state to signed out.
+      // Load failure: auth() already set the state to signed out. A failed
+      // claims read leaves them unknown (claimsKnown() stays false).
     }
   }
 
@@ -95,7 +152,11 @@ export class AuthService {
       await auth.authStateReady();
       const result = await auth.currentUser?.getIdTokenResult();
       if (!result) return null;
-      return result.claims['role'] === 'admin' ? 'admin' : 'user';
+      // Like the api: an impersonated session is never admin.
+      return result.claims['role'] === 'admin' &&
+        !result.claims['impersonatedBy']
+        ? 'admin'
+        : 'user';
     } catch {
       return null;
     }
@@ -144,6 +205,43 @@ export class AuthService {
   }
 
   /**
+   * Signs in with a custom token from the api (admin impersonation). This
+   * replaces the current session: the admin signs back in afterwards.
+   */
+  async signInWithCustomToken(token: string): Promise<void> {
+    const { mod, auth } = await this.module();
+    const from = this.state()?.uid ?? null;
+    // Read-only and never admin from the first render of the new session.
+    this.switchingFrom.set(from ?? 'unknown');
+    try {
+      const { user } = await mod.signInWithCustomToken(auth, token);
+      try {
+        const { claims } = await user.getIdTokenResult();
+        this.claims.set(toSessionClaims(user.uid, claims));
+      } catch (err) {
+        // Signed in, but its claims are unknown: don't leave a session the
+        // UI can't mark read-only. If even signing out fails, mark it
+        // impersonated (read-only, timed) ourselves. The original error wins.
+        try {
+          await mod.signOut(auth);
+        } catch {
+          this.claims.set({
+            uid: user.uid,
+            role: 'user',
+            impersonatedBy: from ?? 'unknown',
+            impersonationStartedAt: Date.now(),
+          });
+        }
+        throw err;
+      }
+      // Signed out meanwhile (the timer, another tab): don't bring it back.
+      if (auth.currentUser?.uid === user.uid) this.publish(user);
+    } finally {
+      this.switchingFrom.set(null);
+    }
+  }
+
+  /**
    * Opens the Google popup. When the SDK is already loaded, the popup opens
    * synchronously inside the click handler (no await first), so browsers
    * that require a user gesture (Safari) don't block it.
@@ -164,14 +262,18 @@ export class AuthService {
     }
   }
 
+  /**
+   * Refused while impersonating: it would email the user as them. Checked
+   * on the token itself, not on claims() (which may not be read yet).
+   */
   async resendVerification(): Promise<void> {
+    if (this.impersonatedBy()) throw readOnlyError();
     const { mod, auth } = await this.module();
-    if (auth.currentUser) {
-      await mod.sendEmailVerification(
-        auth.currentUser,
-        this.continueUrl('/verify-email'),
-      );
-    }
+    const user = auth.currentUser;
+    if (!user) return;
+    const { claims } = await user.getIdTokenResult();
+    if (claims['impersonatedBy']) throw readOnlyError();
+    await mod.sendEmailVerification(user, this.continueUrl('/verify-email'));
   }
 
   /** Re-reads the user (e.g. after clicking the verification link elsewhere). */
@@ -237,15 +339,12 @@ export class AuthService {
         .then(({ claims }) => {
           // A late result from a previous session must not leak into this one.
           if (auth.currentUser?.uid !== user.uid) return;
-          this.claims.set({
-            role: claims['role'] === 'admin' ? 'admin' : 'user',
-            impersonatedBy:
-              typeof claims['impersonatedBy'] === 'string'
-                ? claims['impersonatedBy']
-                : null,
-          });
+          this.claims.set(toSessionClaims(user.uid, claims));
         })
-        .catch(() => this.claims.set(NO_CLAIMS));
+        // Fail closed: keep what's known. This user's earlier claims (e.g.
+        // impersonated) stay; another user's never apply (session() is keyed
+        // by uid), so nothing needs resetting.
+        .catch(() => undefined);
     });
     this.loaded = { auth, mod };
     return auth;
@@ -270,4 +369,44 @@ export class AuthService {
   private continueUrl(path: string) {
     return { url: `${location.origin}${path}` };
   }
+}
+
+function toSessionClaims(
+  uid: string,
+  claims: Record<string, unknown>,
+): SessionClaims {
+  const impersonatedBy =
+    typeof claims['impersonatedBy'] === 'string' && claims['impersonatedBy']
+      ? claims['impersonatedBy']
+      : null;
+  return {
+    uid,
+    role: claims['role'] === 'admin' ? 'admin' : 'user',
+    impersonatedBy,
+    impersonationStartedAt: impersonatedBy
+      ? impersonationStart(claims['impersonatedAt'], claims['auth_time'])
+      : null,
+  };
+}
+
+/** Same `code` shape as Firebase errors, for authErrorMessage. */
+function readOnlyError(): Error {
+  return Object.assign(new Error('Impersonated sessions are read-only'), {
+    code: 'app/impersonation-read-only',
+  });
+}
+
+/**
+ * Mirrors the api guard: the window runs from minting and from sign-in,
+ * whichever ends first, so it starts at the earlier of the two. An unknown
+ * minting time counts as long ago (the api rejects such a session).
+ */
+export function impersonationStart(
+  impersonatedAt: unknown,
+  authTime: unknown,
+): number {
+  const minted = Number(impersonatedAt);
+  if (typeof impersonatedAt !== 'string' || !Number.isFinite(minted)) return 0;
+  const signedIn = Number(authTime) * 1000;
+  return Number.isFinite(signedIn) ? Math.min(minted, signedIn) : minted;
 }
