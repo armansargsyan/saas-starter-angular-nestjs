@@ -1,0 +1,8 @@
+# The build context is dist/apps/api; send only what the Dockerfile copies.
+# (BuildKit reads <Dockerfile>.dockerignore when the Dockerfile sits outside
+# the context; scripts/deploy.sh copies it in as .dockerignore for Cloud Build.)
+*
+!package.json
+!package-lock.json
+!*.js
+!*.js.map

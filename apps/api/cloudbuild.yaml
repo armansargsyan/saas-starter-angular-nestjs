@@ -1,0 +1,11 @@
+# Cloud Build config for the api image, used by `scripts/deploy.sh deploy`
+# (which copies it into the build context, dist/apps/api, with the Dockerfile).
+# The build runs as a dedicated service account, so logs go to Cloud Logging
+# only (no default logs bucket is used with a user-specified account).
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-t', '${_IMAGE}', '.']
+images:
+  - '${_IMAGE}'
+options:
+  logging: CLOUD_LOGGING_ONLY

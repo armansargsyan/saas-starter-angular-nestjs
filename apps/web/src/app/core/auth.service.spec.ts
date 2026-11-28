@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { settle } from '../../testing/settle';
-import { AuthService, DEV_MODE } from './auth.service';
+import { AuthService, DEV_MODE, impersonationStart } from './auth.service';
 import { FIREBASE_OPTIONS, type FirebaseOptions } from './firebase-options';
 
 // A small fake of the Firebase Auth module.
@@ -70,6 +70,11 @@ const fb = vi.hoisted(() => {
       GoogleAuthProvider: class {
         setCustomParameters = vi.fn();
       },
+      signInWithCustomToken: vi.fn(async () => {
+        const user = makeUser({ uid: 'target', providerData: [] });
+        state.currentUser = user;
+        return { user };
+      }),
       signOut: vi.fn(async () => emit(null)),
       EmailAuthProvider: {
         credential: vi.fn((email: string, password: string) => ({
@@ -365,11 +370,12 @@ describe('AuthService', () => {
     await settle();
     expect(await auth.currentRole()).toBeNull();
 
-    fb.state.claims = { role: 'admin', impersonatedBy: 'admin-9' };
+    fb.state.claims = { role: 'admin' };
     fb.emit(fb.makeUser());
     await settle();
     expect(auth.isAdmin()).toBe(true);
-    expect(auth.impersonatedBy()).toBe('admin-9');
+    expect(auth.impersonatedBy()).toBeNull();
+    expect(auth.impersonationStartedAt()).toBeNull();
     expect(await auth.currentRole()).toBe('admin');
 
     // A slow claims result for the previous user arrives after a switch.
@@ -386,5 +392,262 @@ describe('AuthService', () => {
     await settle();
     expect(auth.user()?.uid).toBe('new');
     expect(auth.isAdmin()).toBe(false);
+  });
+
+  it('signs in with an impersonation token and reads the session window', async () => {
+    const auth = create();
+    await settle();
+    const minted = Date.UTC(2026, 10, 27, 12, 0);
+    await auth.signInWithCustomToken('custom-token');
+    expect(fb.mod.signInWithCustomToken).toHaveBeenCalledWith(
+      fb.auth,
+      'custom-token',
+    );
+    expect(auth.user()?.uid).toBe('target');
+
+    fb.state.claims = {
+      // Even a (stale) admin claim never makes an impersonated session admin.
+      role: 'admin',
+      impersonatedBy: 'admin-9',
+      impersonatedAt: String(minted),
+      auth_time: String(minted / 1000 + 60),
+    };
+    fb.emit(fb.state.currentUser);
+    await settle();
+    expect(auth.impersonatedBy()).toBe('admin-9');
+    expect(auth.isAdmin()).toBe(false);
+    expect(await auth.currentRole()).toBe('user');
+    expect(auth.impersonationStartedAt()).toBe(minted);
+  });
+
+  it('starts the impersonation window at the earlier of minting and sign-in', () => {
+    expect(impersonationStart('1000000', '500')).toBe(500_000);
+    expect(impersonationStart('1000000', '5000')).toBe(1_000_000);
+    expect(impersonationStart('1000000', undefined)).toBe(1_000_000);
+    expect(impersonationStart(undefined, '500')).toBe(0);
+    expect(impersonationStart('nope', '500')).toBe(0);
+  });
+
+  describe('impersonating from an admin session', () => {
+    const minted = Date.UTC(2026, 10, 27, 12, 0);
+    const targetClaims = {
+      impersonatedBy: 'admin-uid',
+      impersonatedAt: String(minted),
+      auth_time: String(minted / 1000),
+    };
+
+    /** Signed in as an admin, with the admin claim read. */
+    async function asAdmin() {
+      const auth = create();
+      await settle();
+      fb.state.claims = { role: 'admin' };
+      fb.emit(fb.makeUser({ uid: 'admin-uid' }));
+      await settle();
+      expect(auth.isAdmin()).toBe(true);
+      return auth;
+    }
+
+    it('is read-only and never admin from the moment the user switches', async () => {
+      const auth = await asAdmin();
+      let resolveClaims: (v: unknown) => void = () => undefined;
+      const target = fb.makeUser({
+        uid: 'target',
+        getIdTokenResult: vi.fn(() => new Promise((r) => (resolveClaims = r))),
+      });
+      // Like Firebase: listeners hear about the new user before sign-in resolves.
+      fb.mod.signInWithCustomToken.mockImplementationOnce(async () => {
+        fb.emit(target);
+        return { user: target };
+      });
+
+      const done = auth.signInWithCustomToken('custom-token');
+      await settle();
+      // The admin's claims don't carry over while the target's are read.
+      expect(auth.user()?.uid).toBe('target');
+      expect(auth.isAdmin()).toBe(false);
+      expect(auth.impersonatedBy()).toBe('admin-uid');
+
+      resolveClaims({ claims: targetClaims });
+      await done;
+      await settle();
+      expect(auth.user()?.uid).toBe('target');
+      expect(auth.isAdmin()).toBe(false);
+      expect(auth.impersonatedBy()).toBe('admin-uid');
+      expect(auth.impersonationStartedAt()).toBe(minted);
+      expect(fb.mod.signOut).not.toHaveBeenCalled();
+    });
+
+    it('signs out when the new session’s claims can’t be read', async () => {
+      const auth = await asAdmin();
+      const target = fb.makeUser({
+        uid: 'target',
+        getIdTokenResult: vi.fn(async () => {
+          throw new Error('network');
+        }),
+      });
+      fb.mod.signInWithCustomToken.mockImplementationOnce(async () => {
+        fb.emit(target);
+        return { user: target };
+      });
+      await expect(auth.signInWithCustomToken('t')).rejects.toThrow('network');
+      expect(fb.mod.signOut).toHaveBeenCalled();
+      expect(auth.signedIn()).toBe(false);
+    });
+
+    it('refuses to resend the verification email as the user', async () => {
+      const auth = create();
+      await settle();
+      fb.state.claims = targetClaims;
+      fb.emit(fb.makeUser({ uid: 'target' }));
+      await settle();
+      expect(auth.impersonatedBy()).toBe('admin-uid');
+      await expect(auth.resendVerification()).rejects.toMatchObject({
+        code: 'app/impersonation-read-only',
+      });
+      expect(fb.mod.sendEmailVerification).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('impersonated sessions fail closed', () => {
+    const minted = Date.UTC(2026, 10, 27, 12, 0);
+    const targetClaims = {
+      impersonatedBy: 'admin-uid',
+      impersonatedAt: String(minted),
+      auth_time: String(minted / 1000),
+    };
+    const deferred = () => {
+      let resolve: (v: unknown) => void = () => undefined;
+      let reject: (e: unknown) => void = () => undefined;
+      const promise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    };
+
+    it('keeps a session impersonated when a later claims read fails', async () => {
+      const auth = create();
+      await settle();
+      fb.state.claims = targetClaims;
+      fb.emit(fb.makeUser({ uid: 'target' }));
+      await settle();
+      expect(auth.impersonatedBy()).toBe('admin-uid');
+
+      // A token refresh whose claims can't be read.
+      fb.emit(
+        fb.makeUser({
+          uid: 'target',
+          getIdTokenResult: vi.fn(async () => {
+            throw new Error('network');
+          }),
+        }),
+      );
+      await settle();
+      expect(auth.impersonatedBy()).toBe('admin-uid');
+      expect(auth.claimsKnown()).toBe(true);
+      expect(auth.impersonationStartedAt()).toBe(minted);
+    });
+
+    it('ignores a late failure from an earlier user', async () => {
+      const auth = create();
+      await settle();
+      const old = deferred();
+      fb.emit(
+        fb.makeUser({ uid: 'old', getIdTokenResult: vi.fn(() => old.promise) }),
+      );
+      fb.state.claims = targetClaims;
+      fb.emit(fb.makeUser({ uid: 'target' }));
+      await settle();
+      old.reject(new Error('late'));
+      await settle();
+      expect(auth.impersonatedBy()).toBe('admin-uid');
+    });
+
+    it('after a reload, knows the session is impersonated before whenReady resolves', async () => {
+      const claims = deferred();
+      // The persisted impersonated session, restored on load.
+      fb.state.currentUser = fb.makeUser({
+        uid: 'target',
+        emailVerified: false,
+        getIdTokenResult: vi.fn(() => claims.promise),
+      });
+      const auth = create();
+      let ready = false;
+      const whenReady = auth.whenReady().then(() => (ready = true));
+      await settle();
+      // Signed in, claims unknown: not admin, and the UI is told to wait.
+      expect(auth.user()?.uid).toBe('target');
+      expect(auth.claimsKnown()).toBe(false);
+      expect(auth.isAdmin()).toBe(false);
+      expect(ready).toBe(false);
+      // Resend checks the token itself, so it can't slip through meanwhile.
+      const resend = auth.resendVerification();
+
+      claims.resolve({ claims: targetClaims });
+      await whenReady;
+      expect(auth.claimsKnown()).toBe(true);
+      expect(auth.impersonatedBy()).toBe('admin-uid');
+      await expect(resend).rejects.toMatchObject({
+        code: 'app/impersonation-read-only',
+      });
+      expect(fb.mod.sendEmailVerification).not.toHaveBeenCalled();
+    });
+
+    it('resends for a normal session (claims read from the token)', async () => {
+      const auth = create();
+      await settle();
+      fb.emit(fb.makeUser());
+      await settle();
+      await auth.resendVerification();
+      expect(fb.mod.sendEmailVerification).toHaveBeenCalled();
+    });
+
+    it('keeps the original error, and marks the session, when signing out fails too', async () => {
+      const auth = create();
+      await settle();
+      fb.state.claims = { role: 'admin' };
+      fb.emit(fb.makeUser({ uid: 'admin-uid' }));
+      await settle();
+      const target = fb.makeUser({
+        uid: 'target',
+        getIdTokenResult: vi.fn(async () => {
+          throw new Error('network');
+        }),
+      });
+      fb.mod.signInWithCustomToken.mockImplementationOnce(async () => {
+        fb.emit(target);
+        return { user: target };
+      });
+      fb.mod.signOut.mockRejectedValueOnce(new Error('offline'));
+
+      await expect(auth.signInWithCustomToken('t')).rejects.toThrow('network');
+      await settle();
+      expect(auth.user()?.uid).toBe('target');
+      expect(auth.isAdmin()).toBe(false);
+      expect(auth.impersonatedBy()).toBe('admin-uid');
+      expect(auth.impersonationStartedAt()).toEqual(expect.any(Number));
+    });
+
+    it('doesn’t bring back a session signed out while its claims were read', async () => {
+      const auth = create();
+      await settle();
+      fb.emit(fb.makeUser({ uid: 'admin-uid' }));
+      await settle();
+      const claims = deferred();
+      const target = fb.makeUser({
+        uid: 'target',
+        getIdTokenResult: vi.fn(() => claims.promise),
+      });
+      fb.mod.signInWithCustomToken.mockImplementationOnce(async () => {
+        fb.state.currentUser = target;
+        return { user: target };
+      });
+      const done = auth.signInWithCustomToken('t');
+      await settle();
+      fb.emit(null); // e.g. signed out in another tab
+      claims.resolve({ claims: targetClaims });
+      await done;
+      expect(auth.signedIn()).toBe(false);
+    });
   });
 });

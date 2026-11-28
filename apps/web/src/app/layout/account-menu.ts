@@ -124,8 +124,12 @@ export class AccountMenu {
   protected readonly themes = THEME_PREFERENCES;
   protected readonly themeLabels = THEME_LABELS;
 
+  /** Stopping an impersonation returns the admin to the admin login, like the banner. */
   protected async signOut(): Promise<void> {
+    const impersonating = this.auth.impersonatedBy() !== null;
     await this.auth.signOut();
-    await this.router.navigateByUrl('/');
+    await this.router.navigateByUrl(
+      impersonating ? '/login?redirect=%2Fadmin' : '/',
+    );
   }
 }

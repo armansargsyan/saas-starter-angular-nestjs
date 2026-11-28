@@ -113,4 +113,18 @@ describe('AccountMenu', () => {
     expect(auth.signOut).toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith('/');
   });
+
+  it('stops impersonating back to the admin login', async () => {
+    auth.impersonatedBy.set('admin-1');
+    const navigate = vi
+      .spyOn(TestBed.inject(Router), 'navigateByUrl')
+      .mockResolvedValue(true);
+    await open();
+    const item = inMenu('[data-testid="menu-sign-out"]');
+    expect(item?.textContent).toContain('Stop impersonating');
+    item?.click();
+    await settle();
+    expect(auth.signOut).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith('/login?redirect=%2Fadmin');
+  });
 });
